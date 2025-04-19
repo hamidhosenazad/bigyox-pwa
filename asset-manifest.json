@@ -1,0 +1,15 @@
+{
+  "files": {
+    "main.css": "/bigyox-pwa/static/css/main.4499b1b3.css",
+    "main.js": "/bigyox-pwa/static/js/main.4a12937d.js",
+    "static/js/453.5769eb73.chunk.js": "/bigyox-pwa/static/js/453.5769eb73.chunk.js",
+    "index.html": "/bigyox-pwa/index.html",
+    "main.4499b1b3.css.map": "/bigyox-pwa/static/css/main.4499b1b3.css.map",
+    "main.4a12937d.js.map": "/bigyox-pwa/static/js/main.4a12937d.js.map",
+    "453.5769eb73.chunk.js.map": "/bigyox-pwa/static/js/453.5769eb73.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.4499b1b3.css",
+    "static/js/main.4a12937d.js"
+  ]
+}
