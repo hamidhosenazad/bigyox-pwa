@@ -1,10 +1,11 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Device } from '@twilio/voice-sdk';
 
 const TwilioReceiver = () => {
   const [device, setDevice] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [incomingConnection, setIncomingConnection] = useState(null);
+  const ringtoneRef = useRef(null);
 
   const requestMicrophonePermission = async () => {
     try {
@@ -48,7 +49,15 @@ const TwilioReceiver = () => {
           connection.reject();
           return;
         }
-        setIncomingConnection(connection); // show incoming call UI
+
+        // Start ringtone
+        if (ringtoneRef.current) {
+          ringtoneRef.current.play().catch(err => {
+            console.warn('Ringtone playback blocked:', err);
+          });
+        }
+
+        setIncomingConnection(connection);
       });
 
       await twilioDevice.register();
@@ -73,8 +82,16 @@ const TwilioReceiver = () => {
     return data.token;
   };
 
+  const stopRingtone = () => {
+    if (ringtoneRef.current) {
+      ringtoneRef.current.pause();
+      ringtoneRef.current.currentTime = 0;
+    }
+  };
+
   const handleAccept = () => {
     if (incomingConnection) {
+      stopRingtone();
       incomingConnection.accept();
       setIncomingConnection(null);
     }
@@ -82,6 +99,7 @@ const TwilioReceiver = () => {
 
   const handleReject = () => {
     if (incomingConnection) {
+      stopRingtone();
       incomingConnection.reject();
       setIncomingConnection(null);
     }
@@ -132,6 +150,13 @@ const TwilioReceiver = () => {
       <div style={containerStyle}>
         <div style={indicatorStyle} />
       </div>
+
+      {/* Ringtone Audio */}
+      <audio ref={ringtoneRef} loop preload="auto">
+        <source src="https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg" type="audio/ogg" />
+        <source src="https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.mp3" type="audio/mp3" />
+        Your browser does not support the audio element.
+      </audio>
 
       {incomingConnection && (
         <div style={callOverlayStyle}>
