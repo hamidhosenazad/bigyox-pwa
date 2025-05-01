@@ -5,7 +5,11 @@ const TwilioReceiver = () => {
   const [device, setDevice] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [incomingConnection, setIncomingConnection] = useState(null);
+  const [activeConnection, setActiveConnection] = useState(null);
+  const [callStartTime, setCallStartTime] = useState(null);
+  const [callDuration, setCallDuration] = useState('00:00');
   const ringtoneRef = useRef(null);
+  const durationTimer = useRef(null);
 
   const requestMicrophonePermission = async () => {
     try {
@@ -50,7 +54,6 @@ const TwilioReceiver = () => {
           return;
         }
 
-        // Start ringtone
         if (ringtoneRef.current) {
           ringtoneRef.current.play().catch(err => {
             console.warn('Ringtone playback blocked:', err);
@@ -73,6 +76,8 @@ const TwilioReceiver = () => {
     connectToTwilio();
     return () => {
       if (device) device.destroy();
+      stopRingtone();
+      clearInterval(durationTimer.current);
     };
   }, []);
 
@@ -93,7 +98,18 @@ const TwilioReceiver = () => {
     if (incomingConnection) {
       stopRingtone();
       incomingConnection.accept();
+
+      // Listen for disconnect (other person hangs up)
+      incomingConnection.on('disconnect', () => {
+        setActiveConnection(null);
+        setCallDuration('00:00');
+        clearInterval(durationTimer.current);
+      });
+
+      setActiveConnection(incomingConnection);
       setIncomingConnection(null);
+      setCallStartTime(Date.now());
+      startCallTimer();
     }
   };
 
@@ -103,6 +119,26 @@ const TwilioReceiver = () => {
       incomingConnection.reject();
       setIncomingConnection(null);
     }
+  };
+
+  const handleHangUp = () => {
+    if (activeConnection) {
+      activeConnection.disconnect();
+      setActiveConnection(null);
+      setCallDuration('00:00');
+      clearInterval(durationTimer.current);
+    }
+  };
+
+  const startCallTimer = () => {
+    durationTimer.current = setInterval(() => {
+      if (callStartTime) {
+        const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
+        const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
+        const seconds = String(elapsed % 60).padStart(2, '0');
+        setCallDuration(`${minutes}:${seconds}`);
+      }
+    }, 1000);
   };
 
   const containerStyle = {
@@ -164,6 +200,14 @@ const TwilioReceiver = () => {
           <p>Do you want to accept it?</p>
           <button style={buttonStyle('#4CAF50')} onClick={handleAccept}>Accept</button>
           <button style={buttonStyle('#f44336')} onClick={handleReject}>Reject</button>
+        </div>
+      )}
+
+      {activeConnection && (
+        <div style={callOverlayStyle}>
+          <h2>Call in Progress</h2>
+          <p>Duration: {callDuration}</p>
+          <button style={buttonStyle('#f44336')} onClick={handleHangUp}>Hang Up</button>
         </div>
       )}
     </>
