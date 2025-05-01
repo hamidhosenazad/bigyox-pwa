@@ -109,7 +109,6 @@ const TwilioReceiver = () => {
       setActiveConnection(incomingConnection);
       setIncomingConnection(null);
       setCallStartTime(Date.now());
-      startCallTimer();
     }
   };
 
@@ -126,20 +125,25 @@ const TwilioReceiver = () => {
       activeConnection.disconnect();
       setActiveConnection(null);
       setCallDuration('00:00');
-      clearInterval(durationTimer.current);
+      clearInterval(durationTimer.current); // Reset the timer when hung up
     }
   };
 
-  const startCallTimer = () => {
-    durationTimer.current = setInterval(() => {
-      if (callStartTime) {
+  // Start call timer when callStartTime is set
+  useEffect(() => {
+    if (callStartTime) {
+      durationTimer.current = setInterval(() => {
         const elapsed = Math.floor((Date.now() - callStartTime) / 1000);
         const minutes = String(Math.floor(elapsed / 60)).padStart(2, '0');
         const seconds = String(elapsed % 60).padStart(2, '0');
         setCallDuration(`${minutes}:${seconds}`);
-      }
-    }, 1000);
-  };
+      }, 1000);
+    } else {
+      clearInterval(durationTimer.current);
+      setCallDuration('00:00');
+    }
+    return () => clearInterval(durationTimer.current);
+  }, [callStartTime]);
 
   const containerStyle = {
     display: 'flex',
