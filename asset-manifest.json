@@ -1,15 +1,15 @@
 {
   "files": {
     "main.css": "/bigyox-pwa/static/css/main.e6c13ad2.css",
-    "main.js": "/bigyox-pwa/static/js/main.4278d198.js",
+    "main.js": "/bigyox-pwa/static/js/main.ea3484ef.js",
     "static/js/453.adf4d06f.chunk.js": "/bigyox-pwa/static/js/453.adf4d06f.chunk.js",
     "index.html": "/bigyox-pwa/index.html",
     "main.e6c13ad2.css.map": "/bigyox-pwa/static/css/main.e6c13ad2.css.map",
-    "main.4278d198.js.map": "/bigyox-pwa/static/js/main.4278d198.js.map",
+    "main.ea3484ef.js.map": "/bigyox-pwa/static/js/main.ea3484ef.js.map",
     "453.adf4d06f.chunk.js.map": "/bigyox-pwa/static/js/453.adf4d06f.chunk.js.map"
   },
   "entrypoints": [
     "static/css/main.e6c13ad2.css",
-    "static/js/main.4278d198.js"
+    "static/js/main.ea3484ef.js"
   ]
 }
