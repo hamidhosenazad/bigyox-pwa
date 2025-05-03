@@ -1,51 +1,78 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Device } from '@twilio/voice-sdk';
+import { useParams, Navigate } from 'react-router-dom';
 
 const TwilioReceiver = () => {
+  const { userId } = useParams();
   const [device, setDevice] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [incomingConnection, setIncomingConnection] = useState(null);
   const [activeConnection, setActiveConnection] = useState(null);
   const [callStartTime, setCallStartTime] = useState(null);
   const [callDuration, setCallDuration] = useState('00:00');
+  const [hasMicPermission, setHasMicPermission] = useState(false);
   const ringtoneRef = useRef(null);
   const durationTimer = useRef(null);
+  const isConnecting = useRef(false);
 
   const requestMicrophonePermission = async () => {
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      stream.getTracks().forEach(track => track.stop());
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        audio: true,
+        video: false 
+      });
+      
+      setTimeout(() => {
+        stream.getTracks().forEach(track => track.stop());
+      }, 1000);
+      
+      setHasMicPermission(true);
       return true;
     } catch (err) {
-      console.error('Microphone permission error:', err);
+      setHasMicPermission(false);
       return false;
     }
   };
 
-  const connectToTwilio = async () => {
+  const getAccessToken = async () => {
+    if (!userId) {
+      throw new Error('User ID is required');
+    }
     try {
+      const response = await fetch(`https://getcredentials-3757.twil.io/getCredentials?userId=${userId}`);
+      const data = await response.json();
+      if (!data.token) {
+        throw new Error('No token received from server');
+      }
+      return data.token;
+    } catch (error) {
+      throw error;
+    }
+  };
+
+  const connectToTwilio = useCallback(async () => {
+    if (!userId || isConnecting.current || device) return;
+
+    try {
+      isConnecting.current = true;
       const hasMicPermission = await requestMicrophonePermission();
       if (!hasMicPermission) {
-        console.error('Mic permission denied');
         return;
       }
 
       const token = await getAccessToken();
 
       const twilioDevice = new Device(token, {
-        debug: true,
         enableRingingState: true,
         edge: ['ashburn', 'sydney', 'roaming'],
-        region: 'gll'
+        region: 'gll',
+        sounds: { incoming: null }
       });
 
       twilioDevice.on('registered', () => setIsConnected(true));
       twilioDevice.on('unregistered', () => setIsConnected(false));
       twilioDevice.on('ready', () => setIsConnected(true));
-      twilioDevice.on('error', (error) => {
-        console.error('Twilio.Device Error:', error);
-        setIsConnected(false);
-      });
+      twilioDevice.on('error', () => setIsConnected(false));
 
       twilioDevice.on('incoming', async (connection) => {
         const hasMicPermission = await requestMicrophonePermission();
@@ -55,10 +82,21 @@ const TwilioReceiver = () => {
         }
 
         if (ringtoneRef.current) {
-          ringtoneRef.current.play().catch(err => {
-            console.warn('Ringtone playback blocked:', err);
-          });
+          ringtoneRef.current.play().catch(() => {});
         }
+
+        connection.on('cancel', () => {
+          stopRingtone();
+          setIncomingConnection(null);
+        });
+
+        connection.on('disconnect', () => {
+          stopRingtone();
+          setIncomingConnection(null);
+          setActiveConnection(null);
+          setCallDuration('00:00');
+          clearInterval(durationTimer.current);
+        });
 
         setIncomingConnection(connection);
       });
@@ -67,25 +105,11 @@ const TwilioReceiver = () => {
       setDevice(twilioDevice);
 
     } catch (err) {
-      console.error('Connection error:', err);
       setIsConnected(false);
+    } finally {
+      isConnecting.current = false;
     }
-  };
-
-  useEffect(() => {
-    connectToTwilio();
-    return () => {
-      if (device) device.destroy();
-      stopRingtone();
-      clearInterval(durationTimer.current);
-    };
-  }, []);
-
-  const getAccessToken = async () => {
-    const response = await fetch('https://getcredentials-3757.twil.io/getCredentials');
-    const data = await response.json();
-    return data.token;
-  };
+  }, [userId, device]);
 
   const stopRingtone = () => {
     if (ringtoneRef.current) {
@@ -99,7 +123,6 @@ const TwilioReceiver = () => {
       stopRingtone();
       incomingConnection.accept();
 
-      // Listen for disconnect (other person hangs up)
       incomingConnection.on('disconnect', () => {
         setActiveConnection(null);
         setCallDuration('00:00');
@@ -125,11 +148,23 @@ const TwilioReceiver = () => {
       activeConnection.disconnect();
       setActiveConnection(null);
       setCallDuration('00:00');
-      clearInterval(durationTimer.current); // Reset the timer when hung up
+      clearInterval(durationTimer.current);
     }
   };
 
-  // Start call timer when callStartTime is set
+  useEffect(() => {
+    if (userId) {
+      connectToTwilio();
+    }
+    return () => {
+      if (device) {
+        device.destroy();
+      }
+      stopRingtone();
+      clearInterval(durationTimer.current);
+    };
+  }, [userId, connectToTwilio]);
+
   useEffect(() => {
     if (callStartTime) {
       durationTimer.current = setInterval(() => {
@@ -145,19 +180,44 @@ const TwilioReceiver = () => {
     return () => clearInterval(durationTimer.current);
   }, [callStartTime]);
 
+  if (!userId) {
+    return <Navigate to="/" replace />;
+  }
+
   const containerStyle = {
     display: 'flex',
     justifyContent: 'flex-end',
-    padding: '20px'
+    padding: '20px',
+    gap: '10px'
   };
 
-  const indicatorStyle = {
+  const indicatorStyle = (color) => ({
     width: '20px',
     height: '20px',
     borderRadius: '50%',
-    backgroundColor: isConnected ? '#4CAF50' : '#ff4444',
+    backgroundColor: color,
     transition: 'background-color 0.3s ease',
     boxShadow: '0 0 10px rgba(0,0,0,0.1)'
+  });
+
+  const tooltipStyle = {
+    position: 'absolute',
+    top: '100%',
+    right: '0',
+    backgroundColor: '#333',
+    color: 'white',
+    padding: '5px 10px',
+    borderRadius: '4px',
+    fontSize: '12px',
+    whiteSpace: 'nowrap',
+    marginTop: '5px',
+    display: 'none'
+  };
+
+  const indicatorContainerStyle = {
+    position: 'relative',
+    display: 'flex',
+    alignItems: 'center'
   };
 
   const callOverlayStyle = {
@@ -188,10 +248,22 @@ const TwilioReceiver = () => {
   return (
     <>
       <div style={containerStyle}>
-        <div style={indicatorStyle} />
+        <div style={indicatorContainerStyle}>
+          <div 
+            style={indicatorStyle(
+              hasMicPermission && isConnected ? '#4CAF50' : 
+              !hasMicPermission ? '#ff4444' : 
+              '#ffa500'
+            )}
+            title={
+              hasMicPermission && isConnected ? 'Connected and ready' :
+              !hasMicPermission ? 'Microphone permission required' :
+              'Waiting for connection'
+            }
+          />
+        </div>
       </div>
 
-      {/* Ringtone Audio */}
       <audio ref={ringtoneRef} loop preload="auto">
         <source src="https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg" type="audio/ogg" />
         <source src="https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.mp3" type="audio/mp3" />
@@ -219,3 +291,4 @@ const TwilioReceiver = () => {
 };
 
 export default TwilioReceiver;
+
