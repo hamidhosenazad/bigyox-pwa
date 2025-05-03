@@ -22,6 +22,41 @@ self.addEventListener('install', event => {
   );
 });
 
+// Handle push notifications
+self.addEventListener('push', function(event) {
+  const data = event.data.json();
+  
+  const options = {
+    body: data.body || 'Incoming call...',
+    icon: `${BASE_PATH}/icons/icon-192x192.png`,
+    badge: `${BASE_PATH}/icons/icon-72x72.png`,
+    vibrate: [100, 50, 100],
+    tag: 'call-notification',
+    renotify: true,
+    requireInteraction: true,
+    actions: [
+      { action: 'answer', title: 'Answer' },
+      { action: 'decline', title: 'Decline' }
+    ]
+  };
+
+  event.waitUntil(
+    self.registration.showNotification('Incoming Call', options)
+  );
+});
+
+// Handle notification clicks
+self.addEventListener('notificationclick', function(event) {
+  event.notification.close();
+
+  if (event.action === 'answer') {
+    // Open the app and answer the call
+    event.waitUntil(
+      clients.openWindow(`${BASE_PATH}/${event.notification.data.userId}`)
+    );
+  }
+});
+
 // Cache and return requests
 self.addEventListener('fetch', event => {
   // Skip cross-origin requests
