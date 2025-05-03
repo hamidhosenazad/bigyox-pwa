@@ -1,7 +1,7 @@
 {
-  "short_name": "Twilio PWA",
-  "name": "Twilio Voice PWA",
-  "description": "A Progressive Web App for Twilio Voice Calls",
+  "short_name": "Bigyox PWA",
+  "name": "Bigyox Voice PWA",
+  "description": "A Progressive Web App for Voice Calls",
   "icons": [
     {
       "src": "icons/icon-72x72.png",
