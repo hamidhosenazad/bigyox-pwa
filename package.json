@@ -16,7 +16,8 @@
     "web-vitals": "^2.1.4"
   },
   "devDependencies": {
-    "gh-pages": "^6.3.0"
+    "gh-pages": "^6.3.0",
+    "sharp": "^0.33.2"
   },
   "scripts": {
     "start": "react-scripts start",
@@ -24,7 +25,9 @@
     "predeploy": "npm run build",
     "deploy": "gh-pages -d build",
     "test": "react-scripts test",
-    "eject": "react-scripts eject"
+    "eject": "react-scripts eject",
+    "svg-to-png": "node scripts/svg-to-png.js",
+    "generate-icons": "npm run svg-to-png && node scripts/generate-icons.js"
   },
   "eslintConfig": {
     "extends": [

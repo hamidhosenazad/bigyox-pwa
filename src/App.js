@@ -1,15 +1,33 @@
 // src/App.js
 import React, { useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route, useNavigate, useLocation, Navigate, useParams } from 'react-router-dom';
+import { HashRouter as Router, Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom';
 import TwilioReceiver from './TwilioReceiver';
+
+// Component to handle direct path access
+const DirectPathHandler = () => {
+  useEffect(() => {
+    // Check if we're using direct path instead of hash
+    const path = window.location.pathname;
+    if (path !== '/' && !window.location.hash) {
+      // Extract userId from path
+      const userId = path.substring(1); // Remove leading slash
+      if (userId) {
+        // Redirect to hash-based URL
+        window.location.href = `${window.location.origin}/#/${userId}`;
+      }
+    }
+  }, []);
+
+  return null;
+};
 
 // Component to handle root path check
 const RootPathHandler = () => {
   const location = useLocation();
 
   useEffect(() => {
-    if (location.pathname === '/' || location.pathname === '/bigyox-pwa') {
-      alert('No user ID provided. Please provide a user ID in the URL (e.g., /123)');
+    if (location.pathname === '/') {
+      alert('No user ID provided. Please provide a user ID in the URL (e.g., /#/228)');
     }
   }, [location]);
 
@@ -21,11 +39,6 @@ const ValidatedTwilioReceiver = () => {
   const location = useLocation();
   const { userId } = useParams();
   
-  // Check if we're at the root path of GitHub Pages
-  if (location.pathname === '/bigyox-pwa' || location.pathname === '/') {
-    return <Navigate to="/" replace />;
-  }
-
   // Ensure userId exists and is valid
   if (!userId || userId.trim() === '') {
     return <Navigate to="/" replace />;
@@ -38,11 +51,11 @@ function App() {
   return (
     <Router>
       <div className="App">
+        <DirectPathHandler />
         <RootPathHandler />
         <Routes>
           <Route path="/:userId" element={<ValidatedTwilioReceiver />} />
-          <Route path="/" element={<div>Please provide a user ID in the URL (e.g., /123)</div>} />
-          <Route path="/bigyox-pwa" element={<div>Please provide a user ID in the URL (e.g., /123)</div>} />
+          <Route path="/" element={<div>Please provide a user ID in the URL (e.g., /#/228)</div>} />
         </Routes>
       </div>
     </Router>

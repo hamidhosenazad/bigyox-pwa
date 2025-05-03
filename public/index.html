@@ -2,29 +2,55 @@
 <html lang="en">
   <head>
     <meta charset="utf-8" />
-    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <link rel="icon" href="%PUBLIC_URL%/icons/icon-72x72.png" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="theme-color" content="#000000" />
-    <meta
-      name="description"
-      content="Web site created using create-react-app"
-    />
-    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
-    <!--
-      manifest.json provides metadata used when your web app is installed on a
-      user's mobile device or desktop. See https://developers.google.com/web/fundamentals/web-app-manifest/
-    -->
+    <meta name="description" content="Bigyox Voice Progressive Web App" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/icons/icon-192x192.png" />
     <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
-    <!--
-      Notice the use of %PUBLIC_URL% in the tags above.
-      It will be replaced with the URL of the `public` folder during the build.
-      Only files inside the `public` folder can be referenced from the HTML.
+    <!-- iOS specific meta tags -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black">
+    <meta name="apple-mobile-web-app-title" content="Bigyox PWA">
+    <!-- iOS icons -->
+    <link rel="apple-touch-icon" sizes="152x152" href="%PUBLIC_URL%/icons/icon-152x152.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="%PUBLIC_URL%/icons/icon-192x192.png">
+    <link rel="apple-touch-icon" sizes="167x167" href="%PUBLIC_URL%/icons/icon-152x152.png">
+    <title>Bigyox PWA</title>
+    <!-- PWA User ID Persistence -->
+    <script type="text/javascript">
+      (function() {
+        // Function to get URL parameters
+        function getQueryParam(param) {
+          var searchParams = new URLSearchParams(window.location.search);
+          return searchParams.get(param);
+        }
 
-      Unlike "/favicon.ico" or "favicon.ico", "%PUBLIC_URL%/favicon.ico" will
-      work correctly both with client-side routing and a non-root public URL.
-      Learn how to configure a non-root public URL by running `npm run build`.
-    -->
-    <title>React App</title>
+        // Function to get hash without the leading #
+        function getHash() {
+          return window.location.hash.substring(1);
+        }
+
+        // Check if this is a PWA launch
+        if (window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true) {
+          // Get stored user ID
+          const storedUserId = localStorage.getItem('twilio_pwa_user_id');
+          const currentHash = getHash();
+          
+          // If we have a stored user ID and no current hash route
+          if (storedUserId && !currentHash) {
+            window.location.hash = `/${storedUserId}`;
+          }
+        } else {
+          // Not in PWA mode, store the user ID if present in the hash
+          const hash = getHash();
+          if (hash && hash.startsWith('/')) {
+            const userId = hash.substring(1); // Remove leading slash
+            localStorage.setItem('twilio_pwa_user_id', userId);
+          }
+        }
+      })();
+    </script>
     <!-- Start Single Page Apps for GitHub Pages -->
     <script type="text/javascript">
       // Single Page Apps for GitHub Pages
@@ -45,6 +71,25 @@
   <body>
     <noscript>You need to enable JavaScript to run this app.</noscript>
     <div id="root"></div>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          // Get the base URL from the manifest
+          const manifestElement = document.querySelector('link[rel="manifest"]');
+          const manifestPath = manifestElement ? manifestElement.href : '/manifest.json';
+          const baseUrl = manifestPath.substring(0, manifestPath.lastIndexOf('/'));
+          
+          navigator.serviceWorker
+            .register(`${baseUrl}/service-worker.js`)
+            .then(registration => {
+              console.log('ServiceWorker registration successful');
+            })
+            .catch(err => {
+              console.log('ServiceWorker registration failed: ', err);
+            });
+        });
+      }
+    </script>
     <!--
       This HTML file is a template.
       If you open it directly in the browser, you will see an empty page.
