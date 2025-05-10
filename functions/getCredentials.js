@@ -9,31 +9,43 @@ exports.handler = function(context, event, callback) {
     response.appendHeader('Content-Type', 'application/json');
 
     try {
-        console.log('Received request with event:', event);
-        
+        console.log('Credentials request received:', {
+            userId: event.userId,
+            environment: context.DOMAIN_NAME
+        });
+
         // Check if userId is provided
         if (!event.userId) {
-            console.error('No userId provided in request');
+            console.error('Missing userId in request');
             response.setStatusCode(400);
             response.setBody({ error: 'User ID is required' });
             return callback(null, response);
         }
 
-        console.log('Generating token for userId:', event.userId);
         const identity = `store${event.userId}`;
 
-        // Create a Voice grant
+        // Create a Voice grant with EU-specific configuration
         const voiceGrant = new VoiceGrant({
             incomingAllow: true,
-            outgoingApplicationSid: context.APPLICATION_SID
+            outgoingApplicationSid: context.APPLICATION_SID,
+            // Add EU-specific voice configuration
+            emergencyCallingEnabled: false,
+            // Specify preferred codecs for better voice quality
+            preferredAudioCodecs: ['PCMU', 'opus'],
+            // Enable enhanced features
+            persistentConnection: true
         });
 
-        // Create an access token
+        // Create an access token with EU region specification
         const token = new AccessToken(
             context.ACCOUNT_SID,
             context.API_KEY,
             context.API_SECRET,
-            { identity: identity, ttl: 3600 }
+            { 
+                identity: identity,
+                ttl: 3600,
+                region: 'eu1' // Specify EU region
+            }
         );
 
         // Add the voice grant to the token
@@ -42,18 +54,38 @@ exports.handler = function(context, event, callback) {
         // Serialize the token as a JWT
         const jwt = token.toJwt();
 
-        console.log(`Generated token for ${identity}`);
+        console.log('Generated token details:', {
+            identity: identity,
+            region: 'eu1',
+            ttl: 3600
+        });
 
         response.setBody({
             token: jwt,
             identity: identity,
+            region: 'eu1',
+            // Add additional configuration for the client
+            configuration: {
+                edge: ['frankfurt', 'dublin', 'ashburn'],
+                codecPreferences: ['PCMU', 'opus'],
+                enableIceRestart: true,
+                enableRingingState: true,
+                closeProtection: true
+            }
         });
 
-        callback(null, response);
+        return callback(null, response);
     } catch (err) {
-        console.error('Error generating token:', err);
+        console.error('Error generating token:', {
+            error: err.message,
+            stack: err.stack,
+            code: err.code
+        });
         response.setStatusCode(500);
-        response.setBody({ error: err.message });
-        callback(null, response);
+        response.setBody({ 
+            error: err.message,
+            details: err.details || 'No additional details'
+        });
+        return callback(null, response);
     }
 }; 

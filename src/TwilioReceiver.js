@@ -1,10 +1,13 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Device } from '@twilio/voice-sdk';
 import { useParams, Navigate } from 'react-router-dom';
+import useBackgroundServiceManager from './BackgroundServiceManager';
 
 const TwilioReceiver = () => {
   const { userId } = useParams();
   const [device, setDevice] = useState(null);
+  // Use the background service manager
+  const backgroundService = useBackgroundServiceManager();
   const [isConnected, setIsConnected] = useState(false);
   const [incomingConnection, setIncomingConnection] = useState(null);
   const [activeConnection, setActiveConnection] = useState(null);
@@ -59,19 +62,31 @@ const TwilioReceiver = () => {
       if (!hasMicPermission) {
         return;
       }
+      
+      // Ensure we have a wake lock to keep the device awake
+      backgroundService.acquireWakeLock();
 
       const token = await getAccessToken();
 
       const twilioDevice = new Device(token, {
         enableRingingState: true,
-        edge: ['ashburn', 'sydney', 'roaming'],
+        edge: ['ashburn', 'sydney', 'roaming', 'frankfurt', 'dublin'],
         region: 'gll',
-        sounds: { incoming: null }
+        sounds: { incoming: null },
+        allowIncomingWhileBusy: true
       });
 
-      twilioDevice.on('registered', () => setIsConnected(true));
+      twilioDevice.on('registered', () => {
+        setIsConnected(true);
+        // Register for background sync when device is registered
+        backgroundService.registerBackgroundSync();
+      });
       twilioDevice.on('unregistered', () => setIsConnected(false));
-      twilioDevice.on('ready', () => setIsConnected(true));
+      twilioDevice.on('ready', () => {
+        setIsConnected(true);
+        // Register for periodic sync when device is ready
+        backgroundService.registerPeriodicSync();
+      });
       twilioDevice.on('error', () => setIsConnected(false));
 
       twilioDevice.on('incoming', async (connection) => {
@@ -154,16 +169,38 @@ const TwilioReceiver = () => {
 
   useEffect(() => {
     if (userId) {
+      // Store the user ID in localStorage for persistent connection
+      localStorage.setItem('twilioUserId', userId);
+      
       connectToTwilio();
+      
+      // Send heartbeat to keep service worker alive
+      backgroundService.sendHeartbeat();
+      
+      // Set up a reconnection interval to ensure we stay connected
+      const reconnectionInterval = setInterval(() => {
+        if (!isConnected) {
+          console.log('Reconnection check: Not connected, attempting to reconnect...');
+          connectToTwilio();
+        } else {
+          console.log('Reconnection check: Already connected');
+        }
+      }, 3 * 60 * 1000); // Check every 3 minutes
+      
+      return () => {
+        // Don't destroy the device on component unmount to keep it running in the background
+        // Instead, just clear the interval
+        clearInterval(reconnectionInterval);
+        stopRingtone();
+        clearInterval(durationTimer.current);
+      };
     }
+    
     return () => {
-      if (device) {
-        device.destroy();
-      }
       stopRingtone();
       clearInterval(durationTimer.current);
     };
-  }, [userId, connectToTwilio]);
+  }, [userId, connectToTwilio, backgroundService, isConnected]);
 
   useEffect(() => {
     if (callStartTime) {
@@ -291,4 +328,3 @@ const TwilioReceiver = () => {
 };
 
 export default TwilioReceiver;
-

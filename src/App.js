@@ -2,6 +2,14 @@
 import React, { useEffect } from 'react';
 import { HashRouter as Router, Routes, Route, useLocation, Navigate, useParams } from 'react-router-dom';
 import TwilioReceiver from './TwilioReceiver';
+import useBackgroundServiceManager from './BackgroundServiceManager';
+
+// Component to handle background services
+const BackgroundServices = () => {
+  // Use the background service manager hook
+  useBackgroundServiceManager();
+  return null;
+};
 
 // Component to handle direct path access
 const DirectPathHandler = () => {
@@ -53,6 +61,7 @@ function App() {
       <div className="App">
         <DirectPathHandler />
         <RootPathHandler />
+        <BackgroundServices />
         <Routes>
           <Route path="/:userId" element={<ValidatedTwilioReceiver />} />
           <Route path="/" element={<div>Please provide a user ID in the URL (e.g., /#/228)</div>} />
