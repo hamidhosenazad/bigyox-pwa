@@ -280,60 +280,79 @@ const useBackgroundServiceManager = () => {
     }
   };
   
-  // Setup all background services
-  useEffect(() => {
-    const setupBackgroundServices = async () => {
-      // Acquire wake lock to prevent device from sleeping
+  // Function to handle visibility change
+  const handleVisibilityChange = async () => {
+    if (document.visibilityState === 'visible') {
+      // App is visible again
+      await acquireWakeLock();
+      await connectToTwilio(localStorage.getItem('twilioUserId'));
+      sendHeartbeat();
+    } else {
+      // App is in background
+      // Don't release wake lock here, keep it active
+      // Just ensure Twilio connection stays alive
+      if (twilioDevice && isConnected) {
+        // Send a heartbeat to keep the connection alive
+        sendHeartbeat();
+      }
+    }
+  };
+  
+  // Setup background services
+  const setupBackgroundServices = async () => {
+    try {
+      // Get stored user ID
+      const userId = localStorage.getItem('twilioUserId');
+      
+      if (!userId) {
+        console.log('No user ID available');
+        return;
+      }
+
+      // Acquire wake lock immediately
       await acquireWakeLock();
       
       // Register for background sync
       await registerBackgroundSync();
       
-      // Register for periodic background sync
+      // Register for periodic sync
       await registerPeriodicSync();
       
-      // Setup heartbeat interval to keep service worker alive
-      heartbeatIntervalRef.current = setInterval(sendHeartbeat, 5 * 60 * 1000); // Every 5 minutes
+      // Connect to Twilio
+      await connectToTwilio(userId);
       
-      // Setup Twilio connection check interval
-      twilioCheckIntervalRef.current = setInterval(checkTwilioConnection, 2 * 60 * 1000); // Every 2 minutes
+      // Set up visibility change listener
+      document.addEventListener('visibilitychange', handleVisibilityChange);
       
-      // Send initial heartbeat
-      sendHeartbeat();
+      // Start heartbeat interval (every 30 seconds)
+      heartbeatIntervalRef.current = setInterval(sendHeartbeat, 30000);
       
-      // Check for stored user ID and connect to Twilio if available
-      const userId = localStorage.getItem('twilioUserId');
-      if (userId) {
-        connectToTwilio(userId);
+      // Start Twilio connection check interval (every 2 minutes)
+      twilioCheckIntervalRef.current = setInterval(() => {
+        checkTwilioConnection();
+      }, 120000);
+      
+      // Register event listener for service worker messages
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', async (event) => {
+          if (event.data.type === 'CHECK_TWILIO_CONNECTION') {
+            await checkTwilioConnection();
+          }
+        });
       }
-      
-      // Listen for service worker messages
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        console.log('Message from Service Worker:', event.data);
-        
-        // Handle reconnection requests from service worker
-        if (event.data && event.data.type === 'CHECK_TWILIO_CONNECTION') {
-          checkTwilioConnection();
-        }
-      });
-    };
-    
+    } catch (error) {
+      console.error('Error setting up background services:', error);
+    }
+  };
+  
+  // Setup all background services
+  useEffect(() => {
     // Setup background services when component mounts
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.ready.then(() => {
         setupBackgroundServices();
       });
     }
-    
-    // Document visibility change handler to re-acquire wake lock
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible') {
-        acquireWakeLock();
-      }
-    };
-    
-    // Listen for visibility change events
-    document.addEventListener('visibilitychange', handleVisibilityChange);
     
     // Cleanup function
     return () => {
