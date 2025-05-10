@@ -153,41 +153,40 @@ const useBackgroundServiceManager = () => {
         return;
       }
       
-      // If we have an existing device but not connected, try to register it
-      if (twilioDevice && !isConnected) {
-        try {
-          await twilioDevice.register();
-          return;
-        } catch (err) {
-          // If registration fails, create a new device
-          console.log('Failed to register existing device, creating new one');
-        }
-      }
-      
       // Get token for Twilio connection
       const { token } = await getTwilioToken(userId);
       
-      // Create a new Twilio device
+      // Create a new Twilio device with more aggressive connection settings
       const device = new Device(token, {
         enableRingingState: true,
         edge: ['ashburn', 'sydney', 'roaming', 'frankfurt', 'dublin'],
         region: 'gll',
         sounds: { incoming: null },
-        allowIncomingWhileBusy: true
+        allowIncomingWhileBusy: true,
+        closeProtection: true, // Prevent accidental disconnection
+        keepaliveTimeoutMs: 30000, // More frequent keepalive
+        maxReconnectAttempts: Infinity, // Always try to reconnect
+        reconnectTimeoutMs: 3000 // Faster reconnection attempts
       });
       
       // Set up event handlers
       device.on('registered', () => {
         console.log('Twilio device registered');
         setIsConnected(true);
-        // Store the connection status
         localStorage.setItem('twilioConnected', 'true');
+        // Send heartbeat immediately after registration
+        sendHeartbeat();
       });
       
       device.on('unregistered', () => {
         console.log('Twilio device unregistered');
         setIsConnected(false);
         localStorage.setItem('twilioConnected', 'false');
+        // Try to re-register immediately
+        device.register().catch(err => {
+          console.error('Failed to re-register:', err);
+          reconnectToTwilio();
+        });
       });
       
       device.on('error', (error) => {
@@ -195,10 +194,10 @@ const useBackgroundServiceManager = () => {
         setIsConnected(false);
         localStorage.setItem('twilioConnected', 'false');
         
-        // Try to reconnect after error
+        // Try to reconnect immediately after error
         setTimeout(() => {
           reconnectToTwilio();
-        }, 5000);
+        }, 1000);
       });
       
       device.on('incoming', (connection) => {
@@ -211,8 +210,28 @@ const useBackgroundServiceManager = () => {
           });
         }
         
-        // Store the connection in localStorage so it can be retrieved if the app is opened
+        // Store the connection in localStorage
         localStorage.setItem('incomingCallTimestamp', Date.now().toString());
+        
+        // Wake up the app if it's in background
+        if (document.visibilityState === 'hidden') {
+          navigator.serviceWorker.ready.then(registration => {
+            registration.showNotification('Incoming Call', {
+              body: 'Tap to answer the call',
+              icon: '/icons/icon-192x192.png',
+              badge: '/icons/icon-72x72.png',
+              vibrate: [200, 100, 200, 100, 200],
+              tag: 'call-notification',
+              renotify: true,
+              requireInteraction: true,
+              actions: [
+                { action: 'answer', title: 'Answer' },
+                { action: 'decline', title: 'Decline' }
+              ],
+              data: { userId: userId }
+            });
+          });
+        }
       });
       
       // Register the device
@@ -225,10 +244,10 @@ const useBackgroundServiceManager = () => {
       setIsConnected(false);
       localStorage.setItem('twilioConnected', 'false');
       
-      // Try to reconnect after error
+      // Try to reconnect after error with shorter delay
       setTimeout(() => {
         reconnectToTwilio();
-      }, 10000);
+      }, 3000);
     }
   };
   
@@ -312,11 +331,29 @@ const useBackgroundServiceManager = () => {
       // Acquire wake lock immediately
       await acquireWakeLock();
       
-      // Register for background sync
-      await registerBackgroundSync();
+      // Register for background sync with retry
+      const registerBackgroundSyncWithRetry = async (retries = 3) => {
+        try {
+          await registerBackgroundSync();
+        } catch (error) {
+          if (retries > 0) {
+            setTimeout(() => registerBackgroundSyncWithRetry(retries - 1), 1000);
+          }
+        }
+      };
+      await registerBackgroundSyncWithRetry();
       
-      // Register for periodic sync
-      await registerPeriodicSync();
+      // Register for periodic sync with retry
+      const registerPeriodicSyncWithRetry = async (retries = 3) => {
+        try {
+          await registerPeriodicSync();
+        } catch (error) {
+          if (retries > 0) {
+            setTimeout(() => registerPeriodicSyncWithRetry(retries - 1), 1000);
+          }
+        }
+      };
+      await registerPeriodicSyncWithRetry();
       
       // Connect to Twilio
       await connectToTwilio(userId);
@@ -324,13 +361,13 @@ const useBackgroundServiceManager = () => {
       // Set up visibility change listener
       document.addEventListener('visibilitychange', handleVisibilityChange);
       
-      // Start heartbeat interval (every 30 seconds)
-      heartbeatIntervalRef.current = setInterval(sendHeartbeat, 30000);
+      // Start heartbeat interval (every 15 seconds)
+      heartbeatIntervalRef.current = setInterval(sendHeartbeat, 15000);
       
-      // Start Twilio connection check interval (every 2 minutes)
+      // Start Twilio connection check interval (every 30 seconds)
       twilioCheckIntervalRef.current = setInterval(() => {
         checkTwilioConnection();
-      }, 120000);
+      }, 30000);
       
       // Register event listener for service worker messages
       if ('serviceWorker' in navigator) {
@@ -342,6 +379,8 @@ const useBackgroundServiceManager = () => {
       }
     } catch (error) {
       console.error('Error setting up background services:', error);
+      // Retry setup after error
+      setTimeout(setupBackgroundServices, 5000);
     }
   };
   
