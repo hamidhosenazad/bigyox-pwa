@@ -169,19 +169,38 @@ const TwilioReceiver = () => {
 
   useEffect(() => {
     if (userId) {
+      // Store the user ID in localStorage for persistent connection
+      localStorage.setItem('twilioUserId', userId);
+      
       connectToTwilio();
       
       // Send heartbeat to keep service worker alive
       backgroundService.sendHeartbeat();
+      
+      // Set up a reconnection interval to ensure we stay connected
+      const reconnectionInterval = setInterval(() => {
+        if (!isConnected) {
+          console.log('Reconnection check: Not connected, attempting to reconnect...');
+          connectToTwilio();
+        } else {
+          console.log('Reconnection check: Already connected');
+        }
+      }, 3 * 60 * 1000); // Check every 3 minutes
+      
+      return () => {
+        // Don't destroy the device on component unmount to keep it running in the background
+        // Instead, just clear the interval
+        clearInterval(reconnectionInterval);
+        stopRingtone();
+        clearInterval(durationTimer.current);
+      };
     }
+    
     return () => {
-      if (device) {
-        device.destroy();
-      }
       stopRingtone();
       clearInterval(durationTimer.current);
     };
-  }, [userId, connectToTwilio, backgroundService]);
+  }, [userId, connectToTwilio, backgroundService, isConnected]);
 
   useEffect(() => {
     if (callStartTime) {

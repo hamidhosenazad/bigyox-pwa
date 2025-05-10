@@ -16,6 +16,11 @@ const BACKGROUND_SYNC_TAG = 'twilio-sync';
 // Periodic sync tag
 const PERIODIC_SYNC_TAG = 'twilio-periodic-sync';
 
+// Store Twilio connection status
+let twilioConnected = false;
+let lastTwilioCheck = Date.now();
+let twilioUserId = null;
+
 // Install a service worker
 self.addEventListener('install', event => {
   console.log('Service Worker installing...');
@@ -182,13 +187,54 @@ self.addEventListener('sync', event => {
   }
 });
 
+// Function to check Twilio connection status
+const checkTwilioConnection = async () => {
+  console.log('Checking Twilio connection status in service worker');
+  
+  // If it's been more than 5 minutes since the last check and we think we're connected,
+  // request a connection check from any active clients
+  const fiveMinutes = 5 * 60 * 1000;
+  if (Date.now() - lastTwilioCheck > fiveMinutes) {
+    console.log('It has been more than 5 minutes since the last Twilio check');
+    
+    // Try to find an active client to check the connection
+    const clients = await self.clients.matchAll({ type: 'window' });
+    if (clients.length > 0) {
+      console.log('Found active client, requesting Twilio connection check');
+      clients[0].postMessage({
+        type: 'CHECK_TWILIO_CONNECTION',
+        timestamp: new Date().toISOString()
+      });
+    } else {
+      console.log('No active clients found, will try to wake up the app');
+      
+      // If no active clients and we have a user ID, try to show a notification to wake up the app
+      if (twilioUserId) {
+        self.registration.showNotification('Reconnecting to Twilio', {
+          body: 'Tap to ensure you receive incoming calls',
+          icon: `${BASE_PATH}/icons/icon-192x192.png`,
+          badge: `${BASE_PATH}/icons/icon-72x72.png`,
+          tag: 'reconnect-notification',
+          data: { userId: twilioUserId }
+        });
+      }
+    }
+    
+    // Update the last check time
+    lastTwilioCheck = Date.now();
+  }
+};
+
 // Function to perform background sync operations
 async function doBackgroundSync() {
   console.log('Performing background sync...');
   
+  // Check Twilio connection status
+  await checkTwilioConnection();
+  
   try {
     // Keep service worker alive by sending a heartbeat to the server
-    // This is a placeholder - replace with actual API call to your backend
+    // Include Twilio connection status and user ID in the heartbeat
     const response = await fetch('https://getcredentials-3757.twil.io/heartbeat', {
       method: 'POST',
       headers: {
@@ -196,7 +242,9 @@ async function doBackgroundSync() {
       },
       body: JSON.stringify({
         timestamp: new Date().toISOString(),
-        type: 'heartbeat'
+        type: 'heartbeat',
+        twilioConnected: twilioConnected,
+        userId: twilioUserId
       }),
     });
     
@@ -258,13 +306,44 @@ self.addEventListener('message', event => {
         });
     }
   } else if (event.data && event.data.type === 'WAKE_UP') {
-    // This message is just to wake up the service worker
+    // This message is to wake up the service worker and update Twilio status
     console.log('Service worker woken up');
+    
+    // Update Twilio connection status
+    if (event.data.hasOwnProperty('twilioConnected')) {
+      twilioConnected = event.data.twilioConnected;
+      lastTwilioCheck = Date.now();
+    }
+    
     if (event.source) {
       event.source.postMessage({
         type: 'WAKE_UP_RESPONSE',
         timestamp: new Date().toISOString()
       });
     }
+  } else if (event.data && event.data.type === 'INCOMING_CALL') {
+    // Handle incoming call notification from the client
+    console.log('Incoming call notification received in service worker');
+    
+    // Store the user ID for use in notifications
+    if (event.data.userId) {
+      twilioUserId = event.data.userId;
+    }
+    
+    // Show a notification for the incoming call
+    self.registration.showNotification('Incoming Call', {
+      body: 'You have an incoming call',
+      icon: `${BASE_PATH}/icons/icon-192x192.png`,
+      badge: `${BASE_PATH}/icons/icon-72x72.png`,
+      vibrate: [100, 50, 100],
+      tag: 'call-notification',
+      renotify: true,
+      requireInteraction: true,
+      data: { userId: twilioUserId },
+      actions: [
+        { action: 'answer', title: 'Answer' },
+        { action: 'decline', title: 'Decline' }
+      ]
+    });
   }
 });
