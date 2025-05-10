@@ -158,26 +158,25 @@ self.addEventListener('activate', event => {
   }
 });
 
-// Register for periodic background sync
+// Register for periodic background sync with shorter interval
 async function registerPeriodicSync() {
   try {
-    // Check if periodic background sync is supported
     if ('periodicSync' in self.registration) {
-      // Get permission status
       const status = await navigator.permissions.query({
         name: 'periodic-background-sync',
       });
       
       if (status.state === 'granted') {
-        // Register periodic sync with minimum interval of 15 minutes
         await self.registration.periodicSync.register(PERIODIC_SYNC_TAG, {
-          minInterval: 15 * 60 * 1000, // 15 minutes in milliseconds
+          minInterval: 5 * 60 * 1000, // 5 minutes
         });
         console.log('Periodic background sync registered');
       }
     }
   } catch (error) {
     console.error('Error registering periodic background sync:', error);
+    // Retry registration
+    setTimeout(registerPeriodicSync, 5000);
   }
 }
 
@@ -201,30 +200,36 @@ self.addEventListener('sync', event => {
 const checkTwilioConnection = async () => {
   console.log('Checking Twilio connection status in service worker');
   
-  // If it's been more than 5 minutes since the last check and we think we're connected,
-  // request a connection check from any active clients
-  const fiveMinutes = 5 * 60 * 1000;
-  if (Date.now() - lastTwilioCheck > fiveMinutes) {
-    console.log('It has been more than 5 minutes since the last Twilio check');
+  // Reduced the check interval to 1 minute
+  const oneMinute = 60 * 1000;
+  if (Date.now() - lastTwilioCheck > oneMinute) {
+    console.log('It has been more than 1 minute since the last Twilio check');
     
     // Try to find an active client to check the connection
-    const clients = await self.clients.matchAll({ type: 'window' });
+    const clients = await self.clients.matchAll({ 
+      type: 'window',
+      includeUncontrolled: true 
+    });
+
     if (clients.length > 0) {
       console.log('Found active client, requesting Twilio connection check');
-      clients[0].postMessage({
-        type: 'CHECK_TWILIO_CONNECTION',
-        timestamp: new Date().toISOString()
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'CHECK_TWILIO_CONNECTION',
+          timestamp: new Date().toISOString()
+        });
       });
     } else {
       console.log('No active clients found, will try to wake up the app');
       
       // If no active clients and we have a user ID, try to show a notification to wake up the app
       if (twilioUserId) {
-        self.registration.showNotification('Reconnecting to Twilio', {
+        await self.registration.showNotification('Reconnecting to Service', {
           body: 'Tap to ensure you receive incoming calls',
           icon: `${BASE_PATH}/icons/icon-192x192.png`,
           badge: `${BASE_PATH}/icons/icon-72x72.png`,
           tag: 'reconnect-notification',
+          requireInteraction: true,
           data: { userId: twilioUserId }
         });
       }
@@ -270,38 +275,54 @@ async function doBackgroundSync() {
           icon: `${BASE_PATH}/icons/icon-192x192.png`,
           badge: `${BASE_PATH}/icons/icon-72x72.png`,
           tag: 'reconnect-notification',
+          requireInteraction: true,
           data: { userId: twilioUserId }
         });
+
+        // Try to claim clients to wake up the app
+        await clients.claim();
       }
     }
   } catch (error) {
     console.error('Background sync failed:', error);
+    // Retry background sync after error
+    setTimeout(doBackgroundSync, 5000);
   }
 }
 
-// Handle incoming call notifications
+// Handle incoming call notifications with wake lock request
 self.addEventListener('message', async (event) => {
   if (event.data.type === 'INCOMING_CALL') {
     console.log('Incoming call notification received in service worker');
     
-    // Store the user ID for later use
     twilioUserId = event.data.userId;
     
-    // Show notification for incoming call
-    await self.registration.showNotification('Incoming Call', {
-      body: 'Tap to answer the call',
-      icon: `${BASE_PATH}/icons/icon-192x192.png`,
-      badge: `${BASE_PATH}/icons/icon-72x72.png`,
-      vibrate: [200, 100, 200, 100, 200],
-      tag: 'call-notification',
-      renotify: true,
-      requireInteraction: true,
-      actions: [
-        { action: 'answer', title: 'Answer' },
-        { action: 'decline', title: 'Decline' }
-      ],
-      data: { userId: twilioUserId }
-    });
+    try {
+      // Try to wake up the app
+      const allClients = await clients.matchAll({ type: 'window' });
+      if (allClients.length === 0) {
+        // If no clients are active, try to wake up the app
+        await clients.openWindow(`${BASE_PATH}/${twilioUserId}`);
+      }
+
+      // Show notification
+      await self.registration.showNotification('Incoming Call', {
+        body: 'Tap to answer the call',
+        icon: `${BASE_PATH}/icons/icon-192x192.png`,
+        badge: `${BASE_PATH}/icons/icon-72x72.png`,
+        vibrate: [200, 100, 200, 100, 200],
+        tag: 'call-notification',
+        renotify: true,
+        requireInteraction: true,
+        actions: [
+          { action: 'answer', title: 'Answer' },
+          { action: 'decline', title: 'Decline' }
+        ],
+        data: { userId: twilioUserId }
+      });
+    } catch (error) {
+      console.error('Error handling incoming call:', error);
+    }
   } else if (event.data.type === 'WAKE_UP') {
     // Update Twilio connection status
     twilioConnected = event.data.twilioConnected;
