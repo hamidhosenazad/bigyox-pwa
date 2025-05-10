@@ -21,6 +21,62 @@ let twilioConnected = false;
 let lastTwilioCheck = Date.now();
 let twilioUserId = null;
 
+// Add a persistent wake lock
+let wakeLock = null;
+
+// Function to acquire wake lock
+async function acquireWakeLock() {
+  try {
+    if ('wakeLock' in navigator) {
+      wakeLock = await navigator.wakeLock.request('screen');
+      console.log('Wake Lock acquired in service worker');
+      
+      wakeLock.addEventListener('release', () => {
+        console.log('Wake Lock released in service worker');
+        // Try to reacquire
+        setTimeout(acquireWakeLock, 1000);
+      });
+    }
+  } catch (err) {
+    console.error('Wake Lock error:', err);
+  }
+}
+
+// Function to keep service alive
+async function keepAlive() {
+  try {
+    // Try to acquire wake lock
+    await acquireWakeLock();
+    
+    // Send heartbeat more frequently
+    const response = await fetch('https://getcredentials-3757.twil.io/heartbeat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        timestamp: new Date().toISOString(),
+        type: 'keepalive',
+        twilioConnected: twilioConnected,
+        userId: twilioUserId
+      })
+    });
+
+    if (!response.ok) {
+      throw new Error('Keepalive failed');
+    }
+
+    // If no active clients and we're not connected, try to wake up
+    const clients = await self.clients.matchAll({ type: 'window' });
+    if (clients.length === 0 && !twilioConnected && twilioUserId) {
+      await self.clients.openWindow(`${BASE_PATH}/${twilioUserId}`);
+    }
+  } catch (error) {
+    console.error('Keepalive error:', error);
+  } finally {
+    // Schedule next keepalive
+    setTimeout(keepAlive, 10000); // Every 10 seconds
+  }
+}
+
 // Install a service worker
 self.addEventListener('install', event => {
   console.log('Service Worker installing...');
@@ -70,26 +126,30 @@ self.addEventListener('push', function(event) {
   );
 });
 
-// Handle notification clicks
+// Handle notification clicks with focus
 self.addEventListener('notificationclick', async function(event) {
   event.notification.close();
   
-  // Get all windows with our PWA open
-  const windowClients = await clients.matchAll({
-    type: 'window',
-    includeUncontrolled: true
-  });
-  
-  // If we have a window already open, focus it
-  for (const windowClient of windowClients) {
-    if (windowClient.url.includes(BASE_PATH)) {
-      await windowClient.focus();
-      return;
+  try {
+    // Get all windows
+    const windowClients = await clients.matchAll({
+      type: 'window',
+      includeUncontrolled: true
+    });
+    
+    // If we have a window open, focus it
+    for (const windowClient of windowClients) {
+      if (windowClient.url.includes(BASE_PATH)) {
+        await windowClient.focus();
+        return;
+      }
     }
+    
+    // If no window is open, open one
+    await clients.openWindow(`${BASE_PATH}/${event.notification.data.userId || ''}`);
+  } catch (error) {
+    console.error('Error handling notification click:', error);
   }
-  
-  // If no window is open, open a new one
-  await clients.openWindow(`${BASE_PATH}/${event.notification.data.userId || ''}`);
 });
 
 // Cache and return requests
@@ -135,30 +195,17 @@ self.addEventListener('fetch', event => {
 self.addEventListener('activate', event => {
   console.log('Service Worker activating...');
   
-  // Claim control immediately, rather than waiting for reload
-  event.waitUntil(self.clients.claim());
-  
-  const cacheWhitelist = [CACHE_NAME];
+  // Claim control immediately
   event.waitUntil(
-    caches.keys().then(cacheNames => {
-      return Promise.all(
-        cacheNames.map(cacheName => {
-          if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('Deleting old cache:', cacheName);
-            return caches.delete(cacheName);
-          }
-        })
-      );
-    })
+    Promise.all([
+      self.clients.claim(),
+      keepAlive(),
+      registerPeriodicSync()
+    ])
   );
-  
-  // Register for periodic sync if supported
-  if ('periodicSync' in self.registration) {
-    event.waitUntil(registerPeriodicSync());
-  }
 });
 
-// Register for periodic background sync with shorter interval
+// Register for more frequent periodic sync
 async function registerPeriodicSync() {
   try {
     if ('periodicSync' in self.registration) {
@@ -167,8 +214,9 @@ async function registerPeriodicSync() {
       });
       
       if (status.state === 'granted') {
+        // Try to sync every minute
         await self.registration.periodicSync.register(PERIODIC_SYNC_TAG, {
-          minInterval: 5 * 60 * 1000, // 5 minutes
+          minInterval: 60 * 1000 // 1 minute
         });
         console.log('Periodic background sync registered');
       }
@@ -176,9 +224,59 @@ async function registerPeriodicSync() {
   } catch (error) {
     console.error('Error registering periodic background sync:', error);
     // Retry registration
-    setTimeout(registerPeriodicSync, 5000);
+    setTimeout(registerPeriodicSync, 3000);
   }
 }
+
+// Handle incoming call notifications with immediate wake up
+self.addEventListener('message', async (event) => {
+  if (event.data.type === 'INCOMING_CALL') {
+    console.log('Incoming call notification received in service worker');
+    
+    twilioUserId = event.data.userId;
+    
+    try {
+      // Force wake up the app
+      const allClients = await clients.matchAll({ 
+        type: 'window',
+        includeUncontrolled: true
+      });
+      
+      if (allClients.length === 0) {
+        // If no window is open, open one
+        await clients.openWindow(`${BASE_PATH}/${twilioUserId}`);
+      } else {
+        // If we have a window, focus it
+        await allClients[0].focus();
+      }
+
+      // Show high-priority notification
+      await self.registration.showNotification('Incoming Call', {
+        body: 'Tap to answer the call',
+        icon: `${BASE_PATH}/icons/icon-192x192.png`,
+        badge: `${BASE_PATH}/icons/icon-72x72.png`,
+        vibrate: [200, 100, 200, 100, 200],
+        tag: 'call-notification',
+        renotify: true,
+        priority: 2,
+        requireInteraction: true,
+        actions: [
+          { action: 'answer', title: 'Answer' },
+          { action: 'decline', title: 'Decline' }
+        ],
+        data: { userId: twilioUserId }
+      });
+    } catch (error) {
+      console.error('Error handling incoming call:', error);
+    }
+  } else if (event.data.type === 'WAKE_UP') {
+    twilioConnected = event.data.twilioConnected;
+    lastTwilioCheck = Date.now();
+    
+    // Try to keep alive on wake up
+    keepAlive();
+  }
+});
 
 // Handle periodic background sync
 self.addEventListener('periodicsync', event => {
@@ -190,9 +288,13 @@ self.addEventListener('periodicsync', event => {
 
 // Handle background sync
 self.addEventListener('sync', event => {
-  console.log('Background sync event triggered:', event.tag);
   if (event.tag === BACKGROUND_SYNC_TAG) {
-    event.waitUntil(doBackgroundSync());
+    event.waitUntil(
+      Promise.all([
+        doBackgroundSync(),
+        keepAlive()
+      ])
+    );
   }
 });
 
@@ -289,58 +391,3 @@ async function doBackgroundSync() {
     setTimeout(doBackgroundSync, 5000);
   }
 }
-
-// Handle incoming call notifications with wake lock request
-self.addEventListener('message', async (event) => {
-  if (event.data.type === 'INCOMING_CALL') {
-    console.log('Incoming call notification received in service worker');
-    
-    twilioUserId = event.data.userId;
-    
-    try {
-      // Try to wake up the app
-      const allClients = await clients.matchAll({ type: 'window' });
-      if (allClients.length === 0) {
-        // If no clients are active, try to wake up the app
-        await clients.openWindow(`${BASE_PATH}/${twilioUserId}`);
-      }
-
-      // Show notification
-      await self.registration.showNotification('Incoming Call', {
-        body: 'Tap to answer the call',
-        icon: `${BASE_PATH}/icons/icon-192x192.png`,
-        badge: `${BASE_PATH}/icons/icon-72x72.png`,
-        vibrate: [200, 100, 200, 100, 200],
-        tag: 'call-notification',
-        renotify: true,
-        requireInteraction: true,
-        actions: [
-          { action: 'answer', title: 'Answer' },
-          { action: 'decline', title: 'Decline' }
-        ],
-        data: { userId: twilioUserId }
-      });
-    } catch (error) {
-      console.error('Error handling incoming call:', error);
-    }
-  } else if (event.data.type === 'WAKE_UP') {
-    // Update Twilio connection status
-    twilioConnected = event.data.twilioConnected;
-    lastTwilioCheck = Date.now();
-    
-    // If we're not connected, try to wake up the app
-    if (!twilioConnected && twilioUserId) {
-      const clients = await self.clients.matchAll({ type: 'window' });
-      if (clients.length === 0) {
-        // No active clients, show notification to wake up app
-        await self.registration.showNotification('Reconnecting to Service', {
-          body: 'Tap to ensure you receive incoming calls',
-          icon: `${BASE_PATH}/icons/icon-192x192.png`,
-          badge: `${BASE_PATH}/icons/icon-72x72.png`,
-          tag: 'reconnect-notification',
-          data: { userId: twilioUserId }
-        });
-      }
-    }
-  }
-});
