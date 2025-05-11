@@ -48,7 +48,7 @@ async function keepAlive() {
     // Try to acquire wake lock
     await acquireWakeLock();
     
-    // Send heartbeat more frequently
+    // Send heartbeat more frequently (every 5 seconds)
     const response = await fetch('https://getcredentials-3757.twil.io/heartbeat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -56,7 +56,8 @@ async function keepAlive() {
         timestamp: new Date().toISOString(),
         type: 'keepalive',
         twilioConnected: twilioConnected,
-        userId: twilioUserId
+        userId: twilioUserId,
+        isServiceWorker: true
       })
     });
 
@@ -64,18 +65,51 @@ async function keepAlive() {
       throw new Error('Keepalive failed');
     }
 
+    const data = await response.json();
+    
+    // If we need to reconnect, notify all clients
+    if (data.shouldReconnect) {
+      const clients = await self.clients.matchAll({ 
+        type: 'window',
+        includeUncontrolled: true 
+      });
+      
+      clients.forEach(client => {
+        client.postMessage({
+          type: 'CHECK_TWILIO_CONNECTION',
+          timestamp: new Date().toISOString(),
+          shouldReconnect: true
+        });
+      });
+    }
+
     // If no active clients and we're not connected, try to wake up
     const clients = await self.clients.matchAll({ type: 'window' });
     if (clients.length === 0 && !twilioConnected && twilioUserId) {
+      // Show a notification to get user attention
+      await self.registration.showNotification('Connection Lost', {
+        body: 'Tap to restore connection',
+        icon: `${BASE_PATH}/icons/icon-192x192.png`,
+        badge: `${BASE_PATH}/icons/icon-72x72.png`,
+        tag: 'reconnect-notification',
+        renotify: true,
+        requireInteraction: true,
+        data: { userId: twilioUserId }
+      });
+
+      // Try to wake up the app
       await self.clients.openWindow(`${BASE_PATH}/${twilioUserId}`);
     }
   } catch (error) {
     console.error('Keepalive error:', error);
   } finally {
     // Schedule next keepalive
-    setTimeout(keepAlive, 10000); // Every 10 seconds
+    setTimeout(keepAlive, 5000); // Every 5 seconds
   }
 }
+
+// Start keepalive immediately
+keepAlive();
 
 // Install a service worker
 self.addEventListener('install', event => {
@@ -278,11 +312,15 @@ self.addEventListener('message', async (event) => {
   }
 });
 
-// Handle periodic background sync
+// Register for periodic background sync
 self.addEventListener('periodicsync', event => {
   if (event.tag === PERIODIC_SYNC_TAG) {
-    console.log('Periodic background sync event triggered');
-    event.waitUntil(doBackgroundSync());
+    event.waitUntil(
+      Promise.all([
+        doBackgroundSync(),
+        keepAlive()
+      ])
+    );
   }
 });
 
@@ -302,10 +340,10 @@ self.addEventListener('sync', event => {
 const checkTwilioConnection = async () => {
   console.log('Checking Twilio connection status in service worker');
   
-  // Reduced the check interval to 30 seconds
-  const thirtySeconds = 30 * 1000;
-  if (Date.now() - lastTwilioCheck > thirtySeconds) {
-    console.log('It has been more than 30 seconds since the last Twilio check');
+  // Reduced the check interval to 10 seconds
+  const tenSeconds = 10 * 1000;
+  if (Date.now() - lastTwilioCheck > tenSeconds) {
+    console.log('It has been more than 10 seconds since the last Twilio check');
     
     try {
       // Try to find an active client to check the connection
@@ -348,19 +386,24 @@ const checkTwilioConnection = async () => {
           
           if (windows.length > 0) {
             await Promise.all(windows.map(window => window.focus()));
+          } else {
+            // If no windows exist, open a new one
+            await self.clients.openWindow(`${BASE_PATH}/${twilioUserId}`);
           }
         }
       }
+
+      lastTwilioCheck = Date.now();
     } catch (error) {
-      console.error('Error during connection check:', error);
-      // Schedule a retry
+      console.error('Error in checkTwilioConnection:', error);
+      // Retry after error
       setTimeout(checkTwilioConnection, 5000);
     }
-    
-    // Update the last check time
-    lastTwilioCheck = Date.now();
   }
 };
+
+// Check connection status more frequently
+setInterval(checkTwilioConnection, 10000);
 
 // Function to perform background sync operations
 async function doBackgroundSync() {
