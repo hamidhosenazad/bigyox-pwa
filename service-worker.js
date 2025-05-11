@@ -309,6 +309,11 @@ self.addEventListener('message', async (event) => {
     
     // Try to keep alive on wake up
     keepAlive();
+  } else if (event.data.type === 'KEEPALIVE') {
+    self.registration.active.postMessage({
+      type: 'KEEPALIVE_RESPONSE',
+      timestamp: Date.now()
+    });
   }
 });
 
