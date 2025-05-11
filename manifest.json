@@ -81,16 +81,5 @@
       "url": "/bigyox-pwa/%s"
     }
   ],
-  "capture_links": "existing-client-navigate",
-  "permissions": [
-    "background-fetch",
-    "background-sync",
-    "notifications",
-    "wake-lock"
-  ],
-  "serviceworker": {
-    "src": "service-worker.js",
-    "scope": "/bigyox-pwa/",
-    "use_cache": true
-  }
+  "capture_links": "existing-client-navigate"
 }
