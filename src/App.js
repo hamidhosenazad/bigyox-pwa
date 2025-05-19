@@ -44,7 +44,6 @@ const RootPathHandler = () => {
 
 // Wrapper component to validate userId
 const ValidatedTwilioReceiver = () => {
-  const location = useLocation();
   const { userId } = useParams();
   
   // Ensure userId exists and is valid
@@ -57,7 +56,12 @@ const ValidatedTwilioReceiver = () => {
 
 function App() {
   return (
-    <Router>
+    <Router 
+      future={{ 
+        v7_startTransition: true,
+        v7_relativeSplatPath: true
+      }}
+    >
       <div className="App">
         <DirectPathHandler />
         <RootPathHandler />

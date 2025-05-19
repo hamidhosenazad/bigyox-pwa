@@ -14,6 +14,7 @@ const TwilioReceiver = () => {
   const [callStartTime, setCallStartTime] = useState(null);
   const [callDuration, setCallDuration] = useState('00:00');
   const [hasMicPermission, setHasMicPermission] = useState(false);
+  const [isInitialized, setIsInitialized] = useState(false);
   const ringtoneRef = useRef(null);
   const durationTimer = useRef(null);
   const isConnecting = useRef(false);
@@ -118,13 +119,14 @@ const TwilioReceiver = () => {
 
       await twilioDevice.register();
       setDevice(twilioDevice);
+      setIsInitialized(true);
 
     } catch (err) {
       setIsConnected(false);
     } finally {
       isConnecting.current = false;
     }
-  }, [userId, device]);
+  }, [userId, device, backgroundService]);
 
   const stopRingtone = () => {
     if (ringtoneRef.current) {
@@ -168,12 +170,14 @@ const TwilioReceiver = () => {
   };
 
   useEffect(() => {
+    // Initialize all services including Twilio Device automatically
     if (userId) {
-      connectToTwilio();
-      
-      // Send heartbeat to keep service worker alive
+      backgroundService.acquireWakeLock();
+      backgroundService.registerBackgroundSync();
       backgroundService.sendHeartbeat();
+      connectToTwilio();
     }
+    
     return () => {
       if (device) {
         device.destroy();
@@ -181,7 +185,7 @@ const TwilioReceiver = () => {
       stopRingtone();
       clearInterval(durationTimer.current);
     };
-  }, [userId, connectToTwilio, backgroundService]);
+  }, [userId, backgroundService, device, connectToTwilio]);
 
   useEffect(() => {
     if (callStartTime) {

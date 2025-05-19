@@ -11,18 +11,20 @@ root.render(
   </React.StrictMode>
 );
 
-// Register service worker for PWA functionality
-if ('serviceWorker' in navigator) {
+// Register service worker for PWA functionality ONLY in production
+// This is the recommended approach for Create React App
+if (process.env.NODE_ENV === 'production' && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/service-worker.js')
+    const swPath = '/bigyox-pwa/service-worker.js';
+      
+    navigator.serviceWorker.register(swPath)
       .then(registration => {
-        console.log('Service Worker registered with scope:', registration.scope);
+        console.log('ServiceWorker registration successful');
         
         // Request notification permission on service worker registration
         if ('Notification' in window) {
           Notification.requestPermission().then(permission => {
             if (permission === 'granted') {
-              console.log('Notification permission granted');
               // Subscribe to push notifications here if needed
             }
           });
@@ -32,6 +34,9 @@ if ('serviceWorker' in navigator) {
         console.error('Service Worker registration failed:', error);
       });
   });
+} else {
+  // Service worker is disabled in development mode
+  console.log('SW disabled in dev mode');
 }
 
 // If you want to start measuring performance in your app, pass a function

@@ -25,16 +25,12 @@ const useBackgroundServiceManager = () => {
         
         // Acquire a new wake lock
         wakeLockRef.current = await navigator.wakeLock.request('screen');
-        console.log('Wake Lock acquired');
         
         // Re-acquire wake lock if it's released
         wakeLockRef.current.addEventListener('release', () => {
-          console.log('Wake Lock released');
           // Try to re-acquire the wake lock
           setTimeout(acquireWakeLock, 1000);
         });
-      } else {
-        console.log('Wake Lock API not supported');
       }
     } catch (err) {
       console.error('Failed to acquire Wake Lock:', err);
@@ -49,9 +45,6 @@ const useBackgroundServiceManager = () => {
         
         if ('sync' in registration) {
           await registration.sync.register('twilio-sync');
-          console.log('Background Sync registered');
-        } else {
-          console.log('Background Sync not supported');
         }
       }
     } catch (err) {
@@ -75,12 +68,7 @@ const useBackgroundServiceManager = () => {
             await registration.periodicSync.register('twilio-periodic-sync', {
               minInterval: 15 * 60 * 1000, // 15 minutes
             });
-            console.log('Periodic Background Sync registered');
-          } else {
-            console.log('Periodic Background Sync permission not granted');
           }
-        } else {
-          console.log('Periodic Background Sync not supported');
         }
       }
     } catch (err) {
@@ -115,11 +103,6 @@ const useBackgroundServiceManager = () => {
       
       // Send initial heartbeat
       sendHeartbeat();
-      
-      // Listen for service worker messages
-      navigator.serviceWorker.addEventListener('message', (event) => {
-        console.log('Message from Service Worker:', event.data);
-      });
     };
     
     // Setup background services when component mounts

@@ -53,20 +53,20 @@
       "purpose": "any maskable"
     }
   ],
-  "id": "/bigyox-pwa/",
-  "start_url": "/bigyox-pwa/index.html",
+  "id": "/",
+  "start_url": "/index.html",
   "display": "standalone",
   "theme_color": "#000000",
   "background_color": "#ffffff",
   "orientation": "portrait",
-  "scope": "/bigyox-pwa/",
+  "scope": "/",
   "prefer_related_applications": false,
   "shortcuts": [
     {
       "name": "Answer Call",
       "short_name": "Answer",
       "description": "Answer an incoming call",
-      "url": "/bigyox-pwa/answer",
+      "url": "/answer",
       "icons": [{ "src": "icons/icon-96x96.png", "sizes": "96x96" }]
     }
   ],
@@ -78,7 +78,7 @@
   "protocol_handlers": [
     {
       "protocol": "web+twilio",
-      "url": "/bigyox-pwa/%s"
+      "url": "/%s"
     }
   ],
   "capture_links": "existing-client-navigate"

@@ -1,5 +1,6 @@
 const CACHE_NAME = 'twilio-pwa-v2';
-const BASE_PATH = '/bigyox-pwa';
+// Use an empty base path for local development
+const BASE_PATH = self.location.hostname === 'localhost' ? '' : '/bigyox-pwa';
 const urlsToCache = [
   `${BASE_PATH}/`,
   `${BASE_PATH}/index.html`,
@@ -18,15 +19,12 @@ const PERIODIC_SYNC_TAG = 'twilio-periodic-sync';
 
 // Install a service worker
 self.addEventListener('install', event => {
-  console.log('Service Worker installing...');
-  
   // Skip waiting forces the waiting service worker to become the active service worker
   self.skipWaiting();
   
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache');
         return cache.addAll(urlsToCache);
       })
   );
@@ -34,8 +32,6 @@ self.addEventListener('install', event => {
 
 // Handle push notifications
 self.addEventListener('push', function(event) {
-  console.log('Push notification received');
-  
   let data;
   try {
     data = event.data.json();
@@ -118,8 +114,6 @@ self.addEventListener('fetch', event => {
 
 // Update a service worker
 self.addEventListener('activate', event => {
-  console.log('Service Worker activating...');
-  
   // Claim control immediately, rather than waiting for reload
   event.waitUntil(self.clients.claim());
   
@@ -129,7 +123,6 @@ self.addEventListener('activate', event => {
       return Promise.all(
         cacheNames.map(cacheName => {
           if (cacheWhitelist.indexOf(cacheName) === -1) {
-            console.log('Deleting old cache:', cacheName);
             return caches.delete(cacheName);
           }
         })
@@ -158,7 +151,6 @@ async function registerPeriodicSync() {
         await self.registration.periodicSync.register(PERIODIC_SYNC_TAG, {
           minInterval: 15 * 60 * 1000, // 15 minutes in milliseconds
         });
-        console.log('Periodic background sync registered');
       }
     }
   } catch (error) {
@@ -169,14 +161,12 @@ async function registerPeriodicSync() {
 // Handle periodic background sync
 self.addEventListener('periodicsync', event => {
   if (event.tag === PERIODIC_SYNC_TAG) {
-    console.log('Periodic background sync event triggered');
     event.waitUntil(doBackgroundSync());
   }
 });
 
 // Handle background sync
 self.addEventListener('sync', event => {
-  console.log('Background sync event triggered:', event.tag);
   if (event.tag === BACKGROUND_SYNC_TAG) {
     event.waitUntil(doBackgroundSync());
   }
@@ -184,8 +174,6 @@ self.addEventListener('sync', event => {
 
 // Function to perform background sync operations
 async function doBackgroundSync() {
-  console.log('Performing background sync...');
-  
   try {
     // Keep service worker alive by sending a heartbeat to the server
     // This is a placeholder - replace with actual API call to your backend
@@ -205,7 +193,6 @@ async function doBackgroundSync() {
     }
     
     const data = await response.json();
-    console.log('Background sync successful:', data);
     
     // If there are any pending notifications from the server, show them
     if (data && data.notifications && data.notifications.length > 0) {
@@ -229,14 +216,11 @@ async function doBackgroundSync() {
 
 // Handle messages from the client
 self.addEventListener('message', event => {
-  console.log('Message received in service worker:', event.data);
-  
   if (event.data && event.data.type === 'REGISTER_SYNC') {
     // Register for background sync
     if ('sync' in self.registration) {
       self.registration.sync.register(BACKGROUND_SYNC_TAG)
         .then(() => {
-          console.log('Background sync registered');
           // Respond to the client
           if (event.source) {
             event.source.postMessage({
@@ -259,7 +243,6 @@ self.addEventListener('message', event => {
     }
   } else if (event.data && event.data.type === 'WAKE_UP') {
     // This message is just to wake up the service worker
-    console.log('Service worker woken up');
     if (event.source) {
       event.source.postMessage({
         type: 'WAKE_UP_RESPONSE',
