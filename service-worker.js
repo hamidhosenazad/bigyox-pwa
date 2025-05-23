@@ -1,5 +1,6 @@
 const CACHE_NAME = 'twilio-pwa-v2';
-const BASE_PATH = '/bigyox-pwa';
+// Use an empty base path for local development
+const BASE_PATH = self.location.hostname === 'localhost' ? '' : '/bigyox-pwa';
 const urlsToCache = [
   `${BASE_PATH}/`,
   `${BASE_PATH}/index.html`,
@@ -16,78 +17,14 @@ const BACKGROUND_SYNC_TAG = 'twilio-sync';
 // Periodic sync tag
 const PERIODIC_SYNC_TAG = 'twilio-periodic-sync';
 
-// Store Twilio connection status
-let twilioConnected = false;
-let lastTwilioCheck = Date.now();
-let twilioUserId = null;
-
-// Add a persistent wake lock
-let wakeLock = null;
-
-// Function to acquire wake lock
-async function acquireWakeLock() {
-  try {
-    if ('wakeLock' in navigator) {
-      wakeLock = await navigator.wakeLock.request('screen');
-      console.log('Wake Lock acquired in service worker');
-      
-      wakeLock.addEventListener('release', () => {
-        console.log('Wake Lock released in service worker');
-        // Try to reacquire
-        setTimeout(acquireWakeLock, 1000);
-      });
-    }
-  } catch (err) {
-    console.error('Wake Lock error:', err);
-  }
-}
-
-// Function to keep service alive
-async function keepAlive() {
-  try {
-    // Try to acquire wake lock
-    await acquireWakeLock();
-    
-    // Send heartbeat more frequently
-    const response = await fetch('https://getcredentials-3757.twil.io/heartbeat', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        timestamp: new Date().toISOString(),
-        type: 'keepalive',
-        twilioConnected: twilioConnected,
-        userId: twilioUserId
-      })
-    });
-
-    if (!response.ok) {
-      throw new Error('Keepalive failed');
-    }
-
-    // If no active clients and we're not connected, try to wake up
-    const clients = await self.clients.matchAll({ type: 'window' });
-    if (clients.length === 0 && !twilioConnected && twilioUserId) {
-      await self.clients.openWindow(`${BASE_PATH}/${twilioUserId}`);
-    }
-  } catch (error) {
-    console.error('Keepalive error:', error);
-  } finally {
-    // Schedule next keepalive
-    setTimeout(keepAlive, 10000); // Every 10 seconds
-  }
-}
-
 // Install a service worker
 self.addEventListener('install', event => {
-  console.log('Service Worker installing...');
-  
   // Skip waiting forces the waiting service worker to become the active service worker
   self.skipWaiting();
   
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
-        console.log('Opened cache');
         return cache.addAll(urlsToCache);
       })
   );
@@ -95,8 +32,6 @@ self.addEventListener('install', event => {
 
 // Handle push notifications
 self.addEventListener('push', function(event) {
-  console.log('Push notification received');
-  
   let data;
   try {
     data = event.data.json();
@@ -126,29 +61,15 @@ self.addEventListener('push', function(event) {
   );
 });
 
-// Handle notification clicks with focus
-self.addEventListener('notificationclick', async function(event) {
+// Handle notification clicks
+self.addEventListener('notificationclick', function(event) {
   event.notification.close();
-  
-  try {
-    // Get all windows
-    const windowClients = await clients.matchAll({
-      type: 'window',
-      includeUncontrolled: true
-    });
-    
-    // If we have a window open, focus it
-    for (const windowClient of windowClients) {
-      if (windowClient.url.includes(BASE_PATH)) {
-        await windowClient.focus();
-        return;
-      }
-    }
-    
-    // If no window is open, open one
-    await clients.openWindow(`${BASE_PATH}/${event.notification.data.userId || ''}`);
-  } catch (error) {
-    console.error('Error handling notification click:', error);
+
+  if (event.action === 'answer') {
+    // Open the app and answer the call
+    event.waitUntil(
+      clients.openWindow(`${BASE_PATH}/${event.notification.data.userId}`)
+    );
   }
 });
 
@@ -193,95 +114,53 @@ self.addEventListener('fetch', event => {
 
 // Update a service worker
 self.addEventListener('activate', event => {
-  console.log('Service Worker activating...');
+  // Claim control immediately, rather than waiting for reload
+  event.waitUntil(self.clients.claim());
   
-  // Claim control immediately
+  const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
-    Promise.all([
-      self.clients.claim(),
-      keepAlive(),
-      registerPeriodicSync()
-    ])
+    caches.keys().then(cacheNames => {
+      return Promise.all(
+        cacheNames.map(cacheName => {
+          if (cacheWhitelist.indexOf(cacheName) === -1) {
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
   );
+  
+  // Register for periodic sync if supported
+  if ('periodicSync' in self.registration) {
+    event.waitUntil(registerPeriodicSync());
+  }
 });
 
-// Register for more frequent periodic sync
+// Register for periodic background sync
 async function registerPeriodicSync() {
   try {
+    // Check if periodic background sync is supported
     if ('periodicSync' in self.registration) {
+      // Get permission status
       const status = await navigator.permissions.query({
         name: 'periodic-background-sync',
       });
       
       if (status.state === 'granted') {
-        // Try to sync every minute
+        // Register periodic sync with minimum interval of 15 minutes
         await self.registration.periodicSync.register(PERIODIC_SYNC_TAG, {
-          minInterval: 60 * 1000 // 1 minute
+          minInterval: 15 * 60 * 1000, // 15 minutes in milliseconds
         });
-        console.log('Periodic background sync registered');
       }
     }
   } catch (error) {
     console.error('Error registering periodic background sync:', error);
-    // Retry registration
-    setTimeout(registerPeriodicSync, 3000);
   }
 }
-
-// Handle incoming call notifications with immediate wake up
-self.addEventListener('message', async (event) => {
-  if (event.data.type === 'INCOMING_CALL') {
-    console.log('Incoming call notification received in service worker');
-    
-    twilioUserId = event.data.userId;
-    
-    try {
-      // Force wake up the app
-      const allClients = await clients.matchAll({ 
-        type: 'window',
-        includeUncontrolled: true
-      });
-      
-      if (allClients.length === 0) {
-        // If no window is open, open one
-        await clients.openWindow(`${BASE_PATH}/${twilioUserId}`);
-      } else {
-        // If we have a window, focus it
-        await allClients[0].focus();
-      }
-
-      // Show high-priority notification
-      await self.registration.showNotification('Incoming Call', {
-        body: 'Tap to answer the call',
-        icon: `${BASE_PATH}/icons/icon-192x192.png`,
-        badge: `${BASE_PATH}/icons/icon-72x72.png`,
-        vibrate: [200, 100, 200, 100, 200],
-        tag: 'call-notification',
-        renotify: true,
-        priority: 2,
-        requireInteraction: true,
-        actions: [
-          { action: 'answer', title: 'Answer' },
-          { action: 'decline', title: 'Decline' }
-        ],
-        data: { userId: twilioUserId }
-      });
-    } catch (error) {
-      console.error('Error handling incoming call:', error);
-    }
-  } else if (event.data.type === 'WAKE_UP') {
-    twilioConnected = event.data.twilioConnected;
-    lastTwilioCheck = Date.now();
-    
-    // Try to keep alive on wake up
-    keepAlive();
-  }
-});
 
 // Handle periodic background sync
 self.addEventListener('periodicsync', event => {
   if (event.tag === PERIODIC_SYNC_TAG) {
-    console.log('Periodic background sync event triggered');
     event.waitUntil(doBackgroundSync());
   }
 });
@@ -289,68 +168,15 @@ self.addEventListener('periodicsync', event => {
 // Handle background sync
 self.addEventListener('sync', event => {
   if (event.tag === BACKGROUND_SYNC_TAG) {
-    event.waitUntil(
-      Promise.all([
-        doBackgroundSync(),
-        keepAlive()
-      ])
-    );
+    event.waitUntil(doBackgroundSync());
   }
 });
 
-// Function to check Twilio connection status
-const checkTwilioConnection = async () => {
-  console.log('Checking Twilio connection status in service worker');
-  
-  // Reduced the check interval to 1 minute
-  const oneMinute = 60 * 1000;
-  if (Date.now() - lastTwilioCheck > oneMinute) {
-    console.log('It has been more than 1 minute since the last Twilio check');
-    
-    // Try to find an active client to check the connection
-    const clients = await self.clients.matchAll({ 
-      type: 'window',
-      includeUncontrolled: true 
-    });
-
-    if (clients.length > 0) {
-      console.log('Found active client, requesting Twilio connection check');
-      clients.forEach(client => {
-        client.postMessage({
-          type: 'CHECK_TWILIO_CONNECTION',
-          timestamp: new Date().toISOString()
-        });
-      });
-    } else {
-      console.log('No active clients found, will try to wake up the app');
-      
-      // If no active clients and we have a user ID, try to show a notification to wake up the app
-      if (twilioUserId) {
-        await self.registration.showNotification('Reconnecting to Service', {
-          body: 'Tap to ensure you receive incoming calls',
-          icon: `${BASE_PATH}/icons/icon-192x192.png`,
-          badge: `${BASE_PATH}/icons/icon-72x72.png`,
-          tag: 'reconnect-notification',
-          requireInteraction: true,
-          data: { userId: twilioUserId }
-        });
-      }
-    }
-    
-    // Update the last check time
-    lastTwilioCheck = Date.now();
-  }
-};
-
 // Function to perform background sync operations
 async function doBackgroundSync() {
-  console.log('Performing background sync...');
-  
   try {
-    // Check Twilio connection status
-    await checkTwilioConnection();
-    
-    // Send heartbeat to server
+    // Keep service worker alive by sending a heartbeat to the server
+    // This is a placeholder - replace with actual API call to your backend
     const response = await fetch('https://getcredentials-3757.twil.io/heartbeat', {
       method: 'POST',
       headers: {
@@ -358,36 +184,70 @@ async function doBackgroundSync() {
       },
       body: JSON.stringify({
         timestamp: new Date().toISOString(),
-        type: 'heartbeat',
-        twilioConnected: twilioConnected,
-        userId: twilioUserId
+        type: 'heartbeat'
       }),
     });
     
     if (!response.ok) {
-      throw new Error('Heartbeat failed');
+      throw new Error('Network response was not ok');
     }
     
-    // If we're not connected to Twilio, try to wake up the app
-    if (!twilioConnected && twilioUserId) {
-      const clients = await self.clients.matchAll({ type: 'window' });
-      if (clients.length === 0) {
-        await self.registration.showNotification('Service Disconnected', {
-          body: 'Tap to reconnect to the calling service',
+    const data = await response.json();
+    
+    // If there are any pending notifications from the server, show them
+    if (data && data.notifications && data.notifications.length > 0) {
+      for (const notification of data.notifications) {
+        await self.registration.showNotification(notification.title, {
+          body: notification.body,
           icon: `${BASE_PATH}/icons/icon-192x192.png`,
           badge: `${BASE_PATH}/icons/icon-72x72.png`,
-          tag: 'reconnect-notification',
-          requireInteraction: true,
-          data: { userId: twilioUserId }
+          data: notification.data || {}
         });
-
-        // Try to claim clients to wake up the app
-        await clients.claim();
       }
     }
+    
+    return data;
   } catch (error) {
     console.error('Background sync failed:', error);
-    // Retry background sync after error
-    setTimeout(doBackgroundSync, 5000);
+    // Retry by throwing an error - the browser will reschedule the sync
+    throw error;
   }
 }
+
+// Handle messages from the client
+self.addEventListener('message', event => {
+  if (event.data && event.data.type === 'REGISTER_SYNC') {
+    // Register for background sync
+    if ('sync' in self.registration) {
+      self.registration.sync.register(BACKGROUND_SYNC_TAG)
+        .then(() => {
+          // Respond to the client
+          if (event.source) {
+            event.source.postMessage({
+              type: 'SYNC_REGISTERED',
+              success: true
+            });
+          }
+        })
+        .catch(error => {
+          console.error('Background sync registration failed:', error);
+          // Respond to the client
+          if (event.source) {
+            event.source.postMessage({
+              type: 'SYNC_REGISTERED',
+              success: false,
+              error: error.message
+            });
+          }
+        });
+    }
+  } else if (event.data && event.data.type === 'WAKE_UP') {
+    // This message is just to wake up the service worker
+    if (event.source) {
+      event.source.postMessage({
+        type: 'WAKE_UP_RESPONSE',
+        timestamp: new Date().toISOString()
+      });
+    }
+  }
+});
