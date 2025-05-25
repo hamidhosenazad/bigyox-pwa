@@ -4,9 +4,6 @@ const urlsToCache = [
   `${BASE_PATH}/`,
   `${BASE_PATH}/index.html`,
   `${BASE_PATH}/manifest.json`,
-  `${BASE_PATH}/static/js/main.chunk.js`,
-  `${BASE_PATH}/static/js/bundle.js`,
-  `${BASE_PATH}/static/js/vendors~main.chunk.js`,
   'https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg',
   'https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.mp3'
 ];
