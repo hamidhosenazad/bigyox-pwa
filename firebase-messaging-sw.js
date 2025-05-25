@@ -57,17 +57,21 @@ self.addEventListener('notificationclick', (event) => {
   console.log('Notification clicked:', { action, data });
   notification.close();
 
-  // Get the correct user ID from the data
-  const userId = data.recipient || '238'; // fallback to 238
-  const pwaUrl = `https://sazin.github.io/bigyox-pwa/#/${userId}`;
+  // Extract userId from the stored token identity, NOT from phone number
+  // The userId should be stored when we register the FCM token
+  const userId = data.userId || data.recipient || '238'; // fallback to 238
+  const pwaUrl = `https://hamidhosenazad.github.io/bigyox-pwa/#/${userId}`;
 
   if (action === 'answer') {
     console.log('Answer call:', data.callSid);
     event.waitUntil(
-      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      clients.matchAll({ 
+        type: 'window', 
+        includeUncontrolled: true 
+      }).then(clientList => {
         // Check if PWA is already open
         for (let client of clientList) {
-          if (client.url.includes('sazin.github.io/bigyox-pwa') && 'focus' in client) {
+          if (client.url.includes('hamidhosenazad.github.io/bigyox-pwa') && 'focus' in client) {
             client.focus();
             client.navigate(pwaUrl);
             return;
@@ -93,10 +97,13 @@ self.addEventListener('notificationclick', (event) => {
     // Default click (no action button) - open PWA
     console.log('Default notification click');
     event.waitUntil(
-      clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clientList => {
+      clients.matchAll({ 
+        type: 'window', 
+        includeUncontrolled: true 
+      }).then(clientList => {
         // Check if PWA is already open
         for (let client of clientList) {
-          if (client.url.includes('sazin.github.io/bigyox-pwa') && 'focus' in client) {
+          if (client.url.includes('hamidhosenazad.github.io/bigyox-pwa') && 'focus' in client) {
             client.focus();
             client.navigate(pwaUrl);
             return;
