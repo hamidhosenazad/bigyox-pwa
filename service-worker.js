@@ -1,6 +1,5 @@
-const CACHE_NAME = 'twilio-pwa-v2';
-// Use an empty base path for local development
-const BASE_PATH = self.location.hostname === 'localhost' ? '' : '/bigyox-pwa';
+const CACHE_NAME = 'twilio-pwa-v1';
+const BASE_PATH = '/bigyox-pwa';
 const urlsToCache = [
   `${BASE_PATH}/`,
   `${BASE_PATH}/index.html`,
@@ -12,19 +11,12 @@ const urlsToCache = [
   'https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.mp3'
 ];
 
-// Background sync tag
-const BACKGROUND_SYNC_TAG = 'twilio-sync';
-// Periodic sync tag
-const PERIODIC_SYNC_TAG = 'twilio-periodic-sync';
-
 // Install a service worker
 self.addEventListener('install', event => {
-  // Skip waiting forces the waiting service worker to become the active service worker
-  self.skipWaiting();
-  
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then(cache => {
+        console.log('Opened cache');
         return cache.addAll(urlsToCache);
       })
   );
@@ -32,14 +24,7 @@ self.addEventListener('install', event => {
 
 // Handle push notifications
 self.addEventListener('push', function(event) {
-  let data;
-  try {
-    data = event.data.json();
-  } catch (e) {
-    data = {
-      body: event.data ? event.data.text() : 'Incoming call...'
-    };
-  }
+  const data = event.data.json();
   
   const options = {
     body: data.body || 'Incoming call...',
@@ -49,7 +34,6 @@ self.addEventListener('push', function(event) {
     tag: 'call-notification',
     renotify: true,
     requireInteraction: true,
-    data: data.data || {},
     actions: [
       { action: 'answer', title: 'Answer' },
       { action: 'decline', title: 'Decline' }
@@ -114,9 +98,6 @@ self.addEventListener('fetch', event => {
 
 // Update a service worker
 self.addEventListener('activate', event => {
-  // Claim control immediately, rather than waiting for reload
-  event.waitUntil(self.clients.claim());
-  
   const cacheWhitelist = [CACHE_NAME];
   event.waitUntil(
     caches.keys().then(cacheNames => {
@@ -129,125 +110,4 @@ self.addEventListener('activate', event => {
       );
     })
   );
-  
-  // Register for periodic sync if supported
-  if ('periodicSync' in self.registration) {
-    event.waitUntil(registerPeriodicSync());
-  }
-});
-
-// Register for periodic background sync
-async function registerPeriodicSync() {
-  try {
-    // Check if periodic background sync is supported
-    if ('periodicSync' in self.registration) {
-      // Get permission status
-      const status = await navigator.permissions.query({
-        name: 'periodic-background-sync',
-      });
-      
-      if (status.state === 'granted') {
-        // Register periodic sync with minimum interval of 15 minutes
-        await self.registration.periodicSync.register(PERIODIC_SYNC_TAG, {
-          minInterval: 15 * 60 * 1000, // 15 minutes in milliseconds
-        });
-      }
-    }
-  } catch (error) {
-    console.error('Error registering periodic background sync:', error);
-  }
-}
-
-// Handle periodic background sync
-self.addEventListener('periodicsync', event => {
-  if (event.tag === PERIODIC_SYNC_TAG) {
-    event.waitUntil(doBackgroundSync());
-  }
-});
-
-// Handle background sync
-self.addEventListener('sync', event => {
-  if (event.tag === BACKGROUND_SYNC_TAG) {
-    event.waitUntil(doBackgroundSync());
-  }
-});
-
-// Function to perform background sync operations
-async function doBackgroundSync() {
-  try {
-    // Keep service worker alive by sending a heartbeat to the server
-    // This is a placeholder - replace with actual API call to your backend
-    const response = await fetch('https://getcredentials-3757.twil.io/heartbeat', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        timestamp: new Date().toISOString(),
-        type: 'heartbeat'
-      }),
-    });
-    
-    if (!response.ok) {
-      throw new Error('Network response was not ok');
-    }
-    
-    const data = await response.json();
-    
-    // If there are any pending notifications from the server, show them
-    if (data && data.notifications && data.notifications.length > 0) {
-      for (const notification of data.notifications) {
-        await self.registration.showNotification(notification.title, {
-          body: notification.body,
-          icon: `${BASE_PATH}/icons/icon-192x192.png`,
-          badge: `${BASE_PATH}/icons/icon-72x72.png`,
-          data: notification.data || {}
-        });
-      }
-    }
-    
-    return data;
-  } catch (error) {
-    console.error('Background sync failed:', error);
-    // Retry by throwing an error - the browser will reschedule the sync
-    throw error;
-  }
-}
-
-// Handle messages from the client
-self.addEventListener('message', event => {
-  if (event.data && event.data.type === 'REGISTER_SYNC') {
-    // Register for background sync
-    if ('sync' in self.registration) {
-      self.registration.sync.register(BACKGROUND_SYNC_TAG)
-        .then(() => {
-          // Respond to the client
-          if (event.source) {
-            event.source.postMessage({
-              type: 'SYNC_REGISTERED',
-              success: true
-            });
-          }
-        })
-        .catch(error => {
-          console.error('Background sync registration failed:', error);
-          // Respond to the client
-          if (event.source) {
-            event.source.postMessage({
-              type: 'SYNC_REGISTERED',
-              success: false,
-              error: error.message
-            });
-          }
-        });
-    }
-  } else if (event.data && event.data.type === 'WAKE_UP') {
-    // This message is just to wake up the service worker
-    if (event.source) {
-      event.source.postMessage({
-        type: 'WAKE_UP_RESPONSE',
-        timestamp: new Date().toISOString()
-      });
-    }
-  }
-});
+}); 

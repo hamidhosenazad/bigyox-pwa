@@ -2,7 +2,6 @@
   "short_name": "Bigyox PWA",
   "name": "Bigyox Voice PWA",
   "description": "A Progressive Web App for Voice Calls",
-  "categories": ["communication", "productivity", "utilities"],
   "icons": [
     {
       "src": "icons/icon-72x72.png",
@@ -53,33 +52,12 @@
       "purpose": "any maskable"
     }
   ],
-  "id": "/",
-  "start_url": "/index.html",
+  "id": "/bigyox-pwa/",
+  "start_url": "/bigyox-pwa/index.html",
   "display": "standalone",
   "theme_color": "#000000",
   "background_color": "#ffffff",
   "orientation": "portrait",
-  "scope": "/",
-  "prefer_related_applications": false,
-  "shortcuts": [
-    {
-      "name": "Answer Call",
-      "short_name": "Answer",
-      "description": "Answer an incoming call",
-      "url": "/answer",
-      "icons": [{ "src": "icons/icon-96x96.png", "sizes": "96x96" }]
-    }
-  ],
-  "related_applications": [],
-  "dir": "ltr",
-  "lang": "en-US",
-  "iarc_rating_id": "",
-  "screenshots": [],
-  "protocol_handlers": [
-    {
-      "protocol": "web+twilio",
-      "url": "/%s"
-    }
-  ],
-  "capture_links": "existing-client-navigate"
+  "scope": "/bigyox-pwa/",
+  "prefer_related_applications": false
 }
