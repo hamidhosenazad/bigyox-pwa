@@ -14,13 +14,41 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+// Function to mark PWA as ready
+const markPwaReady = async (callSid) => {
+  try {
+    console.log(`📱 SW: Marking PWA ready for call ${callSid}`);
+    
+    const response = await fetch('https://getcredentials-3757.twil.io/markPwaReady', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        callSid: callSid
+      }),
+    });
+
+    const result = await response.json();
+    console.log('✅ SW: PWA marked as ready:', result);
+    return result;
+  } catch (error) {
+    console.error('❌ SW: Error marking PWA ready:', error);
+  }
+};
+
 // Handle background messages ONLY (this prevents duplicate notifications)
-messaging.onBackgroundMessage((payload) => {
+messaging.onBackgroundMessage(async (payload) => {
   console.log('Received background message:', payload);
   console.log('Payload data:', payload.data);
 
   // Extract data - FCM might wrap it differently
   const messageData = payload.data || payload;
+  const callSid = messageData.callSid;
+  
+  // DON'T mark PWA as ready yet - app is closed and can't receive calls
+  // Only mark ready when user actually opens the app by tapping notification
+  console.log('📱 SW: PWA is closed, showing notification but NOT marking ready yet');
   
   const notificationTitle = messageData.title || 'Incoming Call';
   const notificationOptions = {
@@ -60,7 +88,11 @@ self.addEventListener('notificationclick', (event) => {
   // Extract userId from the stored token identity, NOT from phone number
   // The userId should be stored when we register the FCM token
   const userId = data.userId || data.recipient || '238'; // fallback to 238
-  const pwaUrl = `https://hamidhosenazad.github.io/bigyox-pwa/#/${userId}`;
+  const callSid = data.callSid;
+  const pwaUrl = `http://localhost:3003/#/${userId}`;
+
+  // PWA will mark itself as ready when it actually opens and loads
+  console.log('📱 SW: Opening PWA, letting it mark itself ready when loaded');
 
   if (action === 'answer') {
     console.log('Answer call:', data.callSid);
@@ -71,13 +103,19 @@ self.addEventListener('notificationclick', (event) => {
       }).then(clientList => {
         // Check if PWA is already open
         for (let client of clientList) {
-          if (client.url.includes('hamidhosenazad.github.io/bigyox-pwa') && 'focus' in client) {
+          if (client.url.includes('localhost:3003') && 'focus' in client) {
             client.focus();
             client.navigate(pwaUrl);
+            // Send message to client about the call - let the client mark itself ready
+            client.postMessage({
+              type: 'CALL_ANSWERED',
+              callSid: callSid,
+              userId: userId
+            });
             return;
           }
         }
-        // If PWA not open, open new window
+        // If PWA not open, open new window - PWA will mark itself ready when it loads
         return clients.openWindow(pwaUrl);
       })
     );
@@ -103,13 +141,19 @@ self.addEventListener('notificationclick', (event) => {
       }).then(clientList => {
         // Check if PWA is already open
         for (let client of clientList) {
-          if (client.url.includes('hamidhosenazad.github.io/bigyox-pwa') && 'focus' in client) {
+          if (client.url.includes('localhost:3003') && 'focus' in client) {
             client.focus();
             client.navigate(pwaUrl);
+            // Send message to client about the call - let the client mark itself ready
+            client.postMessage({
+              type: 'CALL_NOTIFICATION_CLICKED',
+              callSid: callSid,
+              userId: userId
+            });
             return;
           }
         }
-        // If PWA not open, open new window
+        // If PWA not open, open new window - PWA will mark itself ready when it loads
         return clients.openWindow(pwaUrl);
       })
     );

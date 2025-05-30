@@ -1,9 +1,9 @@
 const CACHE_NAME = 'twilio-pwa-v1';
-const BASE_PATH = '/bigyox-pwa';
+const BASE_PATH = ''; // Empty for local serving
 const urlsToCache = [
-  `${BASE_PATH}/`,
-  `${BASE_PATH}/index.html`,
-  `${BASE_PATH}/manifest.json`,
+  '/',
+  '/index.html',
+  '/manifest.json',
   'https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg',
   'https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.mp3'
 ];
@@ -25,8 +25,8 @@ self.addEventListener('push', function(event) {
   
   const options = {
     body: data.body || 'Incoming call...',
-    icon: `${BASE_PATH}/icons/icon-192x192.png`,
-    badge: `${BASE_PATH}/icons/icon-72x72.png`,
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-72x72.png',
     vibrate: [100, 50, 100],
     tag: 'call-notification',
     renotify: true,
@@ -49,7 +49,7 @@ self.addEventListener('notificationclick', function(event) {
   if (event.action === 'answer') {
     // Open the app and answer the call
     event.waitUntil(
-      clients.openWindow(`${BASE_PATH}/${event.notification.data.userId}`)
+      clients.openWindow(`/${event.notification.data.userId}`)
     );
   }
 });
