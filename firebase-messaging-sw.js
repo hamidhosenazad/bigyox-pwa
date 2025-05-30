@@ -89,7 +89,7 @@ self.addEventListener('notificationclick', (event) => {
   // The userId should be stored when we register the FCM token
   const userId = data.userId || data.recipient || '238'; // fallback to 238
   const callSid = data.callSid;
-  const pwaUrl = `http://localhost:3003/#/${userId}`;
+  const pwaUrl = `https://hamidhosenazad.github.io/bigyox-pwa/#/${userId}`;
 
   // PWA will mark itself as ready when it actually opens and loads
   console.log('📱 SW: Opening PWA, letting it mark itself ready when loaded');
@@ -103,7 +103,7 @@ self.addEventListener('notificationclick', (event) => {
       }).then(clientList => {
         // Check if PWA is already open
         for (let client of clientList) {
-          if (client.url.includes('localhost:3003') && 'focus' in client) {
+          if (client.url.includes('hamidhosenazad.github.io/bigyox-pwa') && 'focus' in client) {
             client.focus();
             client.navigate(pwaUrl);
             // Send message to client about the call - let the client mark itself ready
@@ -141,7 +141,7 @@ self.addEventListener('notificationclick', (event) => {
       }).then(clientList => {
         // Check if PWA is already open
         for (let client of clientList) {
-          if (client.url.includes('localhost:3003') && 'focus' in client) {
+          if (client.url.includes('hamidhosenazad.github.io/bigyox-pwa') && 'focus' in client) {
             client.focus();
             client.navigate(pwaUrl);
             // Send message to client about the call - let the client mark itself ready
