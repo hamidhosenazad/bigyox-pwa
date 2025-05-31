@@ -53,8 +53,8 @@ messaging.onBackgroundMessage(async (payload) => {
   const notificationTitle = messageData.title || 'Incoming Call';
   const notificationOptions = {
     body: messageData.body || 'New call incoming',
-    icon: '/icons/icon-192x192.png', // Using existing icon
-    badge: '/icons/icon-72x72.png', // Smaller badge icon
+    icon: '/icons/call-icon.png', // Changed to call icon
+    badge: '/icons/call-badge.png', // Changed to call badge
     data: messageData,
     tag: messageData.callSid || 'call-notification',
     requireInteraction: true,
