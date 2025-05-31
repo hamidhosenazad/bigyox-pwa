@@ -2,6 +2,9 @@
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
+// Skip waiting to prevent the "site has been updated" notification
+self.skipWaiting();
+
 firebase.initializeApp({
   apiKey: "AIzaSyAhH53y2wD18i2VBRrrBBPz4MiOIO30xO0",
   authDomain: "bigyox-pwa.firebaseapp.com",
@@ -17,11 +20,16 @@ const messaging = firebase.messaging();
 // Cache the icons
 const CACHE_NAME = 'notification-icons-v1';
 const ICONS_TO_CACHE = [
-  '/icons/call-icon.png',
-  '/icons/call-badge.png'
+  '/icons/icon-192x192.png',
+  '/icons/icon-72x72.png',
+  '/icons/icon-512x512.png'
 ];
 
+// Handle service worker installation
 self.addEventListener('install', (event) => {
+  // Skip waiting to prevent the update notification
+  self.skipWaiting();
+  
   event.waitUntil(
     caches.open(CACHE_NAME)
       .then((cache) => {
@@ -29,6 +37,12 @@ self.addEventListener('install', (event) => {
         return cache.addAll(ICONS_TO_CACHE);
       })
   );
+});
+
+// Handle service worker activation
+self.addEventListener('activate', (event) => {
+  // Claim clients to prevent the update notification
+  event.waitUntil(clients.claim());
 });
 
 // Function to mark PWA as ready
@@ -95,8 +109,8 @@ messaging.onBackgroundMessage(async (payload) => {
   // Ensure icons are cached before showing notification
   try {
     const cache = await caches.open(CACHE_NAME);
-    const iconResponse = await cache.match('/icons/call-icon.png');
-    const badgeResponse = await cache.match('/icons/call-badge.png');
+    const iconResponse = await cache.match('/icons/icon-192x192.png');
+    const badgeResponse = await cache.match('/icons/icon-72x72.png');
 
     if (!iconResponse || !badgeResponse) {
       console.log('Caching icons before showing notification');
