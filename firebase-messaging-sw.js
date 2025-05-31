@@ -14,43 +14,6 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Function to play ringtone sound
-const playRingtone = async () => {
-  try {
-    // Create audio context for background audio
-    const audio = new Audio('/ringtone.mp3');
-    audio.loop = true; // Loop the ringtone until user interacts
-    audio.volume = 1.0; // Maximum volume
-    
-    // Store audio reference to stop later
-    self.currentRingtone = audio;
-    
-    await audio.play();
-    console.log('🔊 Ringtone started playing');
-    
-    // Stop ringtone after 30 seconds if no interaction
-    setTimeout(() => {
-      if (self.currentRingtone) {
-        self.currentRingtone.pause();
-        self.currentRingtone = null;
-        console.log('🔇 Ringtone stopped after timeout');
-      }
-    }, 30000);
-    
-  } catch (error) {
-    console.log('⚠️ Could not play ringtone:', error);
-  }
-};
-
-// Function to stop ringtone
-const stopRingtone = () => {
-  if (self.currentRingtone) {
-    self.currentRingtone.pause();
-    self.currentRingtone = null;
-    console.log('🔇 Ringtone stopped');
-  }
-};
-
 // Function to mark PWA as ready
 const markPwaReady = async (callSid) => {
   try {
@@ -87,28 +50,16 @@ messaging.onBackgroundMessage(async (payload) => {
   // Only mark ready when user actually opens the app by tapping notification
   console.log('📱 SW: PWA is closed, showing notification but NOT marking ready yet');
   
-  const notificationTitle = messageData.title || '📞 Incoming Call';
+  const notificationTitle = messageData.title || 'Incoming Call';
   const notificationOptions = {
-    body: messageData.body || '📱 Tap to answer the call',
+    body: messageData.body || 'New call incoming',
     icon: '/icons/icon-192x192.png', // Using existing icon
     badge: '/icons/icon-72x72.png', // Smaller badge icon
     data: messageData,
     tag: messageData.callSid || 'call-notification',
     requireInteraction: true,
-    // Enhanced vibration pattern for incoming calls (like a phone ringing)
-    // Pattern: [vibrate, pause, vibrate, pause...] in milliseconds
-    vibrate: [1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500, 1000, 500],
+    vibrate: [500, 1000, 500, 1000, 500],
     silent: false,
-    // Add custom sound if supported
-    sound: '/ringtone.mp3',
-    // High priority for call notifications
-    priority: 'high',
-    // Keep notification visible until user interacts
-    sticky: true,
-    // Additional options for better visibility
-    timestamp: Date.now(),
-    // Visual indicators
-    image: '/icons/icon-192x192.png',
     actions: [
       {
         action: 'answer',
@@ -122,10 +73,6 @@ messaging.onBackgroundMessage(async (payload) => {
   };
 
   console.log('Showing notification with options:', notificationOptions);
-  
-  // Play ringtone for incoming call
-  playRingtone();
-  
   return self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
@@ -136,10 +83,6 @@ self.addEventListener('notificationclick', (event) => {
   const data = notification.data;
 
   console.log('Notification clicked:', { action, data });
-  
-  // Stop ringtone immediately when user interacts
-  stopRingtone();
-  
   notification.close();
 
   // Extract userId from the stored token identity, NOT from phone number
