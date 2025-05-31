@@ -70,8 +70,8 @@ messaging.onBackgroundMessage(async (payload) => {
   const notificationTitle = messageData.title || 'Incoming Call';
   const notificationOptions = {
     body: messageData.body || 'New call incoming',
-    icon: '/icons/call-icon.png',
-    badge: '/icons/call-badge.png',
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-72x72.png',
     data: messageData,
     tag: messageData.callSid || 'call-notification',
     requireInteraction: true,
@@ -86,7 +86,10 @@ messaging.onBackgroundMessage(async (payload) => {
         action: 'decline', 
         title: '❌ Decline'
       }
-    ]
+    ],
+    timestamp: Date.now(),
+    renotify: true,
+    image: '/icons/icon-512x512.png'
   };
 
   // Ensure icons are cached before showing notification
