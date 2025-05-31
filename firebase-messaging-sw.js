@@ -14,6 +14,23 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+// Cache the icons
+const CACHE_NAME = 'notification-icons-v1';
+const ICONS_TO_CACHE = [
+  '/icons/call-icon.png',
+  '/icons/call-badge.png'
+];
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('Caching notification icons');
+        return cache.addAll(ICONS_TO_CACHE);
+      })
+  );
+});
+
 // Function to mark PWA as ready
 const markPwaReady = async (callSid) => {
   try {
@@ -53,8 +70,8 @@ messaging.onBackgroundMessage(async (payload) => {
   const notificationTitle = messageData.title || 'Incoming Call';
   const notificationOptions = {
     body: messageData.body || 'New call incoming',
-    icon: '/icons/call-icon.png', // Changed to call icon
-    badge: '/icons/call-badge.png', // Changed to call badge
+    icon: '/icons/call-icon.png',
+    badge: '/icons/call-badge.png',
     data: messageData,
     tag: messageData.callSid || 'call-notification',
     requireInteraction: true,
@@ -71,6 +88,20 @@ messaging.onBackgroundMessage(async (payload) => {
       }
     ]
   };
+
+  // Ensure icons are cached before showing notification
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const iconResponse = await cache.match('/icons/call-icon.png');
+    const badgeResponse = await cache.match('/icons/call-badge.png');
+
+    if (!iconResponse || !badgeResponse) {
+      console.log('Caching icons before showing notification');
+      await cache.addAll(ICONS_TO_CACHE);
+    }
+  } catch (error) {
+    console.error('Error caching icons:', error);
+  }
 
   console.log('Showing notification with options:', notificationOptions);
   return self.registration.showNotification(notificationTitle, notificationOptions);
