@@ -34,8 +34,14 @@ self.addEventListener('push', function(event) {
     actions: [
       { action: 'answer', title: 'Answer' },
       { action: 'decline', title: 'Decline' }
-    ]
+    ],
+    silent: false, // Ensure sound is not muted
+    sound: 'https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg' // Use a better notification sound
   };
+
+  // Play notification sound
+  const audio = new Audio('https://actions.google.com/sounds/v1/alarms/phone_alerts_and_rings.ogg');
+  audio.play().catch(error => console.log('Error playing notification sound:', error));
 
   event.waitUntil(
     self.registration.showNotification('Incoming Call', options)

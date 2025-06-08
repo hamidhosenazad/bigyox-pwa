@@ -2,6 +2,9 @@
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/9.0.0/firebase-messaging-compat.js');
 
+// Skip waiting to prevent the "site has been updated" notification
+self.skipWaiting();
+
 firebase.initializeApp({
   apiKey: "AIzaSyAhH53y2wD18i2VBRrrBBPz4MiOIO30xO0",
   authDomain: "bigyox-pwa.firebaseapp.com",
@@ -13,6 +16,34 @@ firebase.initializeApp({
 });
 
 const messaging = firebase.messaging();
+
+// Cache the icons
+const CACHE_NAME = 'notification-icons-v1';
+const ICONS_TO_CACHE = [
+  '/icons/icon-192x192.png',
+  '/icons/icon-72x72.png',
+  '/icons/icon-512x512.png'
+];
+
+// Handle service worker installation
+self.addEventListener('install', (event) => {
+  // Skip waiting to prevent the update notification
+  self.skipWaiting();
+  
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('Caching notification icons');
+        return cache.addAll(ICONS_TO_CACHE);
+      })
+  );
+});
+
+// Handle service worker activation
+self.addEventListener('activate', (event) => {
+  // Claim clients to prevent the update notification
+  event.waitUntil(clients.claim());
+});
 
 // Function to mark PWA as ready
 const markPwaReady = async (callSid) => {
@@ -53,13 +84,14 @@ messaging.onBackgroundMessage(async (payload) => {
   const notificationTitle = messageData.title || 'Incoming Call';
   const notificationOptions = {
     body: messageData.body || 'New call incoming',
-    icon: '/icons/icon-192x192.png', // Using existing icon
-    badge: '/icons/icon-72x72.png', // Smaller badge icon
+    icon: '/icons/icon-192x192.png',
+    badge: '/icons/icon-72x72.png',
     data: messageData,
     tag: messageData.callSid || 'call-notification',
     requireInteraction: true,
     vibrate: [500, 1000, 500, 1000, 500],
     silent: false,
+    sound: '/sounds/notification.mp3',
     actions: [
       {
         action: 'answer',
@@ -69,8 +101,25 @@ messaging.onBackgroundMessage(async (payload) => {
         action: 'decline', 
         title: '❌ Decline'
       }
-    ]
+    ],
+    timestamp: Date.now(),
+    renotify: true,
+    image: '/icons/icon-512x512.png'
   };
+
+  // Ensure icons are cached before showing notification
+  try {
+    const cache = await caches.open(CACHE_NAME);
+    const iconResponse = await cache.match('/icons/icon-192x192.png');
+    const badgeResponse = await cache.match('/icons/icon-72x72.png');
+
+    if (!iconResponse || !badgeResponse) {
+      console.log('Caching icons before showing notification');
+      await cache.addAll(ICONS_TO_CACHE);
+    }
+  } catch (error) {
+    console.error('Error caching icons:', error);
+  }
 
   console.log('Showing notification with options:', notificationOptions);
   return self.registration.showNotification(notificationTitle, notificationOptions);
